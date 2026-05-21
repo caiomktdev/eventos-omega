@@ -1,13 +1,12 @@
 /**
  * Layout raiz da aplicação.
- * Define fonte, metadados globais e o Navbar persistente.
  */
 
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Navbar } from "@/components/navbar";
 import { SessionProvider } from "next-auth/react";
+import { SiteChrome } from "@/components/site-chrome";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -39,25 +38,7 @@ export default function RootLayout({
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
         <SessionProvider>
-          <Navbar />
-          <main className="min-h-screen">{children}</main>
-          <footer className="border-t bg-muted/40 py-8 mt-16">
-            <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-              <p>© 2026 EventosOmega. Todos os direitos reservados.</p>
-              <p className="mt-1">
-                Uma tecnologia{" "}
-                <a
-                  href="https://www.instagram.com/moovehubb/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-medium text-foreground hover:underline underline-offset-2"
-                >
-                  Moovehubb
-                </a>
-                .
-              </p>
-            </div>
-          </footer>
+          <SiteChrome>{children}</SiteChrome>
         </SessionProvider>
       </body>
     </html>

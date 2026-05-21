@@ -18,7 +18,6 @@ interface PageProps {
 export default async function AdminLoginPage({ searchParams }: PageProps) {
   const session = await auth();
 
-  // Já autenticado? Redireciona diretamente
   if (session?.user) {
     const { callbackUrl } = await searchParams;
     redirect(
@@ -31,33 +30,26 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
   const { callbackUrl } = await searchParams;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-sm">
-          {/* Cabeçalho */}
-          <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-              Bem-vindo de volta
-            </h1>
-            <p className="text-sm text-gray-500 mt-1.5">
-              Entre com suas credenciais para continuar
-            </p>
-          </div>
+    <div className="w-full max-w-sm">
+      <div className="text-center mb-8">
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+          Bem-vindo de volta
+        </h1>
+        <p className="text-sm text-gray-500 mt-1.5">
+          Entre com suas credenciais para continuar
+        </p>
+      </div>
 
-          {/* Formulário */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            <LoginForm callbackUrl={callbackUrl} />
-          </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+        <LoginForm callbackUrl={callbackUrl} />
+      </div>
 
-          {/* Rodapé de apoio */}
-          <p className="text-center text-xs text-gray-400 mt-6">
-            Problemas para acessar?{" "}
-            <span className="text-primary cursor-pointer hover:underline">
-              Entre em contato com o suporte
-            </span>
-          </p>
-        </div>
-      </main>
+      <p className="text-center text-xs text-gray-400 mt-6">
+        Problemas para acessar?{" "}
+        <span className="text-primary cursor-pointer hover:underline">
+          Entre em contato com o suporte
+        </span>
+      </p>
     </div>
   );
 }
