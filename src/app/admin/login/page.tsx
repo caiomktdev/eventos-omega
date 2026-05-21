@@ -58,11 +58,6 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
           </p>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="py-4 text-center text-xs text-gray-400">
-        © 2026 EventosOmega · Plataforma de eventos
-      </footer>
     </div>
   );
 }
