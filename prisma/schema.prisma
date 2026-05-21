@@ -1,0 +1,314 @@
+// =============================================================================
+// Prisma Schema — EventosOmega
+// Banco: PostgreSQL
+//
+// Modelos principais:
+//   User        — organizadores e participantes
+//   Event       — eventos com formStructure Json para formulários dinâmicos
+//   Participant — inscrição no evento com ordemCompra autoincrement
+//   Transaction — transação financeira com grossValue, mooveFee (2%) e organizerNetValue
+//
+// Modelos de suporte:
+//   TicketType  — tipos de ingresso do evento
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  ADMIN
+  ORGANIZER
+  BUYER
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  FINISHED
+}
+
+enum ParticipantStatus {
+  REGISTERED   // Inscrito (aguardando pagamento ou gratuito confirmado)
+  CONFIRMED    // Pagamento aprovado
+  CHECKED_IN   // Presença confirmada no evento
+  CANCELLED    // Inscrição cancelada
+  REFUNDED     // Estornado
+}
+
+enum TransactionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  REFUNDED
+  IN_PROCESS
+  IN_MEDIATION
+  CHARGED_BACK
+}
+
+enum SponsorMediaType {
+  IMAGE
+  VIDEO
+}
+
+// ---------------------------------------------------------------------------
+// User — organizadores e compradores
+// ---------------------------------------------------------------------------
+
+model User {
+  id                String    @id @default(cuid())
+  name              String
+  email             String    @unique
+  emailVerified     DateTime?
+  image             String?
+  role              UserRole  @default(BUYER)
+  /// Senha hashed (bcryptjs). Nulo para usuários criados via OAuth.
+  password          String?
+  /// ID da conta Mercado Pago do organizador (collector_id — split marketplace)
+  mercadoPagoUserId         String?
+  /// Access token OAuth do organizador (servidor only — nunca expor ao cliente)
+  mercadoPagoAccessToken    String?   @db.Text
+  /// Refresh token OAuth para renovação automática
+  mercadoPagoRefreshToken   String?   @db.Text
+  /// Expiração do access token OAuth
+  mercadoPagoTokenExpiresAt DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  events       Event[]
+  participants Participant[]
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Event — evento com formulário de inscrição dinâmico (formStructure Json)
+// ---------------------------------------------------------------------------
+
+model Event {
+  id          String      @id @default(cuid())
+  /// URL slug único do evento (ex: "festival-de-rock-omega-2026").
+  /// Gerado automaticamente a partir do título no momento da criação.
+  slug        String      @unique
+  title       String
+  description String      @db.Text
+  coverImage  String?
+  venue       String
+  address     String
+  city        String
+  state       String      @db.Char(2)
+  startDate   DateTime
+  endDate     DateTime
+  status      EventStatus @default(DRAFT)
+  organizerId String
+
+  /// Estrutura JSON do formulário de inscrição personalizado do evento.
+  /// Define quais campos extras o participante deve preencher além dos dados básicos.
+  /// Exemplo:
+  /// {
+  ///   "fields": [
+  ///     { "name": "cpf",       "label": "CPF",        "type": "text",   "required": true },
+  ///     { "name": "camiseta",  "label": "Tamanho",    "type": "select", "options": ["P","M","G"] },
+  ///     { "name": "alimentar", "label": "Restrição",  "type": "text",   "required": false }
+  ///   ]
+  /// }
+  formStructure Json @default("{\"fields\":[]}")
+
+  /// Nome do produtor/organizador exibido na página pública.
+  producerName String?
+  /// Bio curta do produtor exibida na seção "Sobre o produtor".
+  producerBio  String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organizer    User         @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  ticketTypes  TicketType[]
+  participants Participant[]
+  sponsorMedia EventSponsorMedia[]
+
+  @@index([organizerId])
+  @@index([status, startDate])
+  @@index([slug])
+  @@map("events")
+}
+
+// ---------------------------------------------------------------------------
+// EventSponsorMedia — mídias de patrocinadores (banner home + página do evento)
+// ---------------------------------------------------------------------------
+
+model EventSponsorMedia {
+  id          String           @id @default(cuid())
+  eventId     String
+  sponsorName String?
+  mediaType   SponsorMediaType
+  /// URL remota ou data URL (base64) — mesmo padrão de Event.coverImage.
+  mediaUrl    String           @db.Text
+  linkUrl     String?
+  sortOrder   Int              @default(0)
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, sortOrder])
+  @@index([isActive])
+  @@map("event_sponsor_media")
+}
+
+// ---------------------------------------------------------------------------
+// PlatformSponsor — logos de patrocinadores globais (carrossel acima das categorias)
+// ---------------------------------------------------------------------------
+
+model PlatformSponsor {
+  id        String   @id @default(cuid())
+  name      String
+  /// URL remota ou data URL (base64) — mesmo padrão de Event.coverImage.
+  logoUrl   String   @db.Text
+  linkUrl   String?
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@map("platform_sponsors")
+}
+
+// ---------------------------------------------------------------------------
+// PlatformBannerMedia — mídias do banner promocional na home (slider grande)
+// ---------------------------------------------------------------------------
+
+model PlatformBannerMedia {
+  id          String           @id @default(cuid())
+  sponsorName String?
+  mediaType   SponsorMediaType
+  /// URL remota ou data URL (base64) — mesmo padrão de Event.coverImage.
+  mediaUrl    String           @db.Text
+  linkUrl     String?
+  sortOrder   Int              @default(0)
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([isActive, sortOrder])
+  @@map("platform_banner_media")
+}
+
+// ---------------------------------------------------------------------------
+// TicketType — tipos de ingresso vinculados a um evento
+// ---------------------------------------------------------------------------
+
+model TicketType {
+  id             String    @id @default(cuid())
+  eventId        String
+  name           String
+  description    String?
+  price          Decimal   @db.Decimal(10, 2)
+  totalQuantity  Int
+  soldQuantity   Int       @default(0)
+  maxPerOrder    Int       @default(10)
+  salesStartDate DateTime?
+  salesEndDate   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  event        Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participants Participant[]
+
+  @@index([eventId])
+  @@map("ticket_types")
+}
+
+// ---------------------------------------------------------------------------
+// Participant — inscrição de um usuário em um evento
+//
+// ordemCompra: número sequencial global autoincrement — usado para
+//   geração de QR Code de check-in, impressão de crachá, controle de fila.
+// formData: respostas do participante aos campos definidos em Event.formStructure
+// ---------------------------------------------------------------------------
+
+model Participant {
+  id           String            @id @default(cuid())
+  /// Número de ordem de compra sequencial global (autoincrement).
+  /// Serve como identificador humano-legível para check-in e suporte.
+  ordemCompra  Int               @default(autoincrement())
+  userId       String
+  eventId      String
+  ticketTypeId String
+  status       ParticipantStatus @default(REGISTERED)
+
+  /// Respostas do participante ao formulário definido em Event.formStructure.
+  /// Armazenado como JSON para flexibilidade total de campos por evento.
+  /// Exemplo: { "cpf": "123.456.789-00", "camiseta": "M", "alimentar": "" }
+  formData Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id])
+  event       Event       @relation(fields: [eventId], references: [id])
+  ticketType  TicketType  @relation(fields: [ticketTypeId], references: [id])
+  transaction Transaction?
+
+  @@unique([ordemCompra])
+  @@index([userId])
+  @@index([eventId])
+  @@index([ticketTypeId])
+  @@index([status])
+  @@map("participants")
+}
+
+// ---------------------------------------------------------------------------
+// Transaction — transação financeira de uma inscrição
+//
+// REGRA DE NEGÓCIO CRÍTICA (Moove):
+//   mooveFee = 2% sobre grossValue, calculada exclusivamente no servidor.
+//   organizerNetValue = grossValue - mooveFee
+//   Esses três campos são imutáveis após a criação da transação.
+// ---------------------------------------------------------------------------
+
+model Transaction {
+  id            String            @id @default(cuid())
+  participantId String            @unique
+
+  /// Valor bruto cobrado do comprador (em Reais).
+  grossValue    Decimal           @db.Decimal(10, 2)
+
+  /// Taxa de intermediação Moove: exatamente 2% de grossValue.
+  /// Calculada no servidor — nunca aceita do cliente.
+  mooveFee      Decimal           @db.Decimal(10, 2)
+
+  /// Valor líquido repassado ao organizador: grossValue - mooveFee.
+  organizerNetValue Decimal       @db.Decimal(10, 2)
+
+  status        TransactionStatus @default(PENDING)
+
+  /// ID do pagamento retornado pelo Mercado Pago após aprovação.
+  mercadoPagoPaymentId    String? @unique
+  /// ID da preferência de pagamento criada no Mercado Pago.
+  mercadoPagoPreferenceId String?
+
+  paymentMethod String?
+  paidAt        DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@index([mercadoPagoPaymentId])
+  @@index([status])
+  @@map("transactions")
+}
