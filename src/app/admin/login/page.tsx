@@ -1,14 +1,11 @@
 /**
  * /admin/login — tela de login unificada para Admin e Organizer.
- * Estilização minimalista inspirada na Sympla: fundo branco,
- * logo centralizado, card de formulário clean com sombra suave.
  */
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { LoginForm } from "@/components/auth/login-form";
-import { SiteLogo } from "@/components/brand/site-logo";
 
 export const metadata: Metadata = {
   title: "Entrar — EventosOmega",
@@ -35,14 +32,6 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Barra de topo minimalista */}
-      <header className="bg-white border-b border-gray-100">
-        <div className="max-w-sm mx-auto px-4 h-14 flex items-center justify-center">
-          <SiteLogo variant="full" />
-        </div>
-      </header>
-
-      {/* Card central */}
       <main className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm">
           {/* Cabeçalho */}

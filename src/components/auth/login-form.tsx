@@ -7,8 +7,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 import { Eye, EyeOff, Loader2, AlertCircle, Mail, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,23 +18,37 @@ interface LoginFormProps {
   callbackUrl?: string;
 }
 
-// Mapeia os códigos de erro do next-auth para mensagens em português
+// Mensagem padrão para credenciais inválidas
+const INVALID_CREDENTIALS_MESSAGE =
+  "Erro - verifique as suas credenciais";
+
 function humanizeError(error: string | undefined | null): string {
-  if (!error) return "";
+  if (!error) return INVALID_CREDENTIALS_MESSAGE;
   switch (error) {
     case "CredentialsSignin":
-      return "E-mail ou senha incorretos. Verifique e tente novamente.";
+      return INVALID_CREDENTIALS_MESSAGE;
     case "SessionRequired":
       return "Sua sessão expirou. Faça login novamente.";
     case "AccessDenied":
       return "Você não tem permissão para acessar esta área.";
     default:
-      return "Ocorreu um erro inesperado. Tente novamente.";
+      return INVALID_CREDENTIALS_MESSAGE;
   }
 }
 
+function resolvePostLoginDestination(
+  role: string | undefined,
+  callbackUrl?: string
+): string {
+  if (callbackUrl && callbackUrl.startsWith("/")) {
+    return callbackUrl;
+  }
+  if (role === "ADMIN") return "/admin";
+  if (role === "ORGANIZER") return "/dashboard";
+  return "/dashboard";
+}
+
 export function LoginForm({ callbackUrl }: LoginFormProps) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const [email, setEmail] = useState("");
@@ -57,24 +70,29 @@ export function LoginForm({ callbackUrl }: LoginFormProps) {
     }
 
     startTransition(async () => {
-      const result = await signIn("credentials", {
-        email: email.toLowerCase().trim(),
-        password,
-        redirect: false,
-      });
+      try {
+        const result = await signIn("credentials", {
+          email: email.toLowerCase().trim(),
+          password,
+          redirect: false,
+        });
 
-      if (result?.error) {
-        setError(humanizeError(result.error));
-        return;
+        if (!result?.ok || result.error) {
+          setError(humanizeError(result?.error));
+          return;
+        }
+
+        const session = await getSession();
+        const destination = resolvePostLoginDestination(
+          session?.user?.role,
+          callbackUrl
+        );
+
+        // Navegação completa garante que o cookie de sessão seja lido pelo middleware
+        window.location.assign(destination);
+      } catch {
+        setError(INVALID_CREDENTIALS_MESSAGE);
       }
-
-      // Força re-fetch da session no server após login
-      router.refresh();
-
-      // Redireciona para callbackUrl ou para área correta por role
-      // O redirect definitivo é feito pelo middleware, aqui usamos o callback
-      const destination = callbackUrl ?? "/admin";
-      router.push(destination);
     });
   }
 
