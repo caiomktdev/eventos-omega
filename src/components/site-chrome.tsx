@@ -10,6 +10,7 @@ export function SiteChrome({ children }: { children: React.ReactNode }) {
   if (isLogin) {
     return (
       <div className="flex min-h-dvh flex-col bg-gray-50">
+        <Navbar />
         <main className="flex flex-1 items-center justify-center px-4 py-8">
           {children}
         </main>
