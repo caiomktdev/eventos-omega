@@ -101,6 +101,34 @@ function verifyMpSignature(
   }
 }
 
+/** Pagamento inexistente (ex.: simulação do painel MP com id "123456"). */
+function isMpPaymentNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+
+  const e = err as {
+    status?: number;
+    statusCode?: number;
+    message?: string;
+    cause?: { status?: number };
+    apiResponse?: { status?: number };
+  };
+
+  const status =
+    e.status ??
+    e.statusCode ??
+    e.cause?.status ??
+    e.apiResponse?.status;
+
+  if (status === 404) return true;
+
+  const message = (e.message ?? "").toLowerCase();
+  return (
+    message.includes("404") ||
+    message.includes("not found") ||
+    message.includes("resource not found")
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Helpers de negócio (transações atômicas)
 // ---------------------------------------------------------------------------
@@ -277,6 +305,19 @@ async function handleIntermediateStatus(
 }
 
 // ---------------------------------------------------------------------------
+// Health check (GET) — abrir no navegador não dispara webhook; MP usa POST
+// ---------------------------------------------------------------------------
+
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    endpoint: "/api/webhooks/mercadopago",
+    message:
+      "Webhook Mercado Pago ativo. Notificações reais são enviadas via POST pelo Mercado Pago.",
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Handler principal do webhook
 // ---------------------------------------------------------------------------
 
@@ -335,6 +376,15 @@ export async function POST(request: Request) {
 
   const mpPaymentId = String(payload.data.id);
 
+  // Simulação do painel MP envia ID fictício — endpoint deve responder 200
+  if (mpPaymentId === "123456") {
+    return NextResponse.json({
+      received: true,
+      processed: false,
+      reason: "simulation",
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Consulta o pagamento na API do MP para obter o status real
   // Não confiamos no status que vem no payload — validamos direto na fonte
@@ -346,8 +396,19 @@ export async function POST(request: Request) {
     mpPayment = await paymentClient.get({ id: mpPaymentId });
   } catch (err) {
     console.error(`[Webhook MP] Falha ao buscar payment ${mpPaymentId}:`, err);
-    // Retorna 200 para evitar re-fila infinita; logamos para investigação manual
-    return NextResponse.json({ received: true, error: "Falha ao consultar MP." });
+
+    if (isMpPaymentNotFoundError(err)) {
+      return NextResponse.json({
+        received: true,
+        processed: false,
+        reason: "payment_not_found",
+      });
+    }
+
+    return NextResponse.json(
+      { error: "Falha ao consultar pagamento no Mercado Pago." },
+      { status: 502 }
+    );
   }
 
   if (!mpPayment?.external_reference) {
