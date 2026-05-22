@@ -1,376 +1,500 @@
-# Relatório de Auditoria Técnica — EventosOmega
+# Auditoria Técnica — EventosOmega
 
-**Data:** 20/05/2026  
-**Versão analisada:** Next.js 16.2.6 (Turbopack) + Prisma 5.22 + Auth.js v5 beta.25  
-**Escopo:** Varredura completa do repositório — rotas, endpoints, componentes, segurança e lacunas
+**Data:** 22/05/2026  
+**Versão analisada:** commit `60ec12b` (main)  
+**Ambiente de produção:** https://eventos-omega-six.vercel.app  
+**Repositório:** https://github.com/caiomktdev/eventos-omega  
+**Escopo:** Varredura completa do repositório — código, rotas, pagamentos, lacunas para produção 100%
 
----
-
-## Sumário
-
-1. [Árvore de Arquivos e Limpeza](#1-árvore-de-arquivos-e-limpeza)
-2. [Mapeamento de Endpoints e Regras Financeiras](#2-mapeamento-de-endpoints-e-regras-financeiras)
-3. [Diagnóstico de Componentes e Interface](#3-diagnóstico-de-componentes-e-interface)
-4. [Lacunas e Pontos Quebrados](#4-lacunas-e-pontos-quebrados)
-5. [Resumo Executivo](#5-resumo-executivo)
+> **Substitui** a auditoria de 20/05/2026 e o documento `EventosOmega-Contexto-Tecnico.doc`.
 
 ---
 
-## 1. Árvore de Arquivos e Limpeza
+## Sumário executivo
 
-### 1.1 Estrutura atual real
+| Área | Status | Prontidão |
+|------|--------|-----------|
+| Vitrine pública + inscrição | ✅ Funcional | 95% |
+| Painel organizador + admin | ✅ Funcional | 90% |
+| Mercado Pago marketplace (OAuth split) | ⚠️ Parcial | 75% |
+| Checkout embarcado (cartão/PIX/boleto) | ⚠️ Parcial | 80% |
+| PIX com QR Code + copia e cola | ✅ Implementado | 85% |
+| Webhook + confirmação de pagamento | ✅ Implementado | 90% |
+| **Envio de ingresso por e-mail** | ❌ **Não existe** | **0%** |
+| Ingresso digital (PDF/QR check-in) | ❌ Não existe | 0% |
+| Testes automatizados | ⚠️ Mínimo | 25% |
+| Observabilidade / e-mail / storage | ❌ Ausente | 10% |
 
-```
-src/
-├── app/
-│   ├── admin/
-│   │   ├── dashboard/page.tsx          ✅ Dashboard financeiro (KPIs)
-│   │   ├── events/
-│   │   │   ├── [id]/
-│   │   │   │   ├── edit/page.tsx       ✅ Edição de evento
-│   │   │   │   └── page.tsx            ✅ Detalhe do evento
-│   │   │   └── new/page.tsx            ⚠️ DUPLICAÇÃO (usa AdminEventForm, não o Sympla)
-│   │   ├── layout.tsx                  ✅ Atualizado (auth() + SignOutButton)
-│   │   ├── login/page.tsx              ✅ Login unificado
-│   │   └── page.tsx                    ✅ Painel de eventos
-│   ├── api/
-│   │   ├── admin/events/[id]/
-│   │   │   ├── export/route.ts         ✅ Export CSV de participantes
-│   │   │   └── route.ts                ✅ GET + PATCH + DELETE
-│   │   ├── admin/events/route.ts       ✅ GET + POST (protegido via middleware)
-│   │   ├── admin/participants/[id]/route.ts  ✅
-│   │   ├── auth/[...nextauth]/route.ts ✅ Handlers Auth.js v5
-│   │   ├── checkout/route.ts           ✅ COMPLETO
-│   │   ├── enroll/route.ts             ✅ COMPLETO
-│   │   ├── events/route.ts             ⚠️ POST SEM AUTH (qualquer cliente pode criar evento)
-│   │   ├── participants/[id]/transaction/route.ts ✅ Polling de transação
-│   │   └── webhooks/mercadopago/route.ts ✅ COMPLETO
-│   ├── checkout/[id]/page.tsx          ✅ Retry de pagamento
-│   ├── dashboard/
-│   │   ├── events/new/page.tsx         ✅ Usa CreateEventForm (Sympla, 7 seções)
-│   │   └── page.tsx                    ⚠️ Não filtra por organizerId
-│   ├── event/[slug]/page.tsx           ✅ Página pública (2 colunas, Sympla)
-│   ├── events/[id]/page.tsx            ✅ Redirect 308 → /event/[slug]
-│   ├── payment/{failure,success}/      ✅ Páginas pós-pagamento
-│   └── page.tsx                        ✅ Home com busca server-side
-│
-├── auth.config.ts                      ✅ Edge-compatible (middleware)
-├── auth.ts                             ✅ Node.js full (CredentialsProvider)
-├── middleware.ts                       ✅ Proteção por role (src/middleware.ts)
-│
-├── components/
-│   ├── admin/
-│   │   ├── admin-event-form.tsx        ✅ Formulário edição/criação admin
-│   │   ├── event-filter.tsx            ✅
-│   │   ├── event-status-actions.tsx    ✅
-│   │   ├── form-builder.tsx            ✅ Editor visual de formStructure
-│   │   ├── participant-edit-dialog.tsx ✅
-│   │   └── participant-table.tsx       ✅ Tabela funcional com busca e paginação
-│   ├── auth/
-│   │   ├── login-form.tsx              ✅
-│   │   └── sign-out-button.tsx         ✅
-│   ├── checkout/
-│   │   └── retry-payment-button.tsx    ✅
-│   ├── dashboard/
-│   │   └── event-form.tsx              ❌ ARQUIVO MORTO
-│   ├── events/
-│   │   ├── create-event-form.tsx       ✅ Formulário Sympla (7 seções)
-│   │   ├── dynamic-event-form.tsx      ✅ Formulário público de inscrição
-│   │   ├── event-card.tsx              ✅ Card estilo Sympla
-│   │   └── event-list.tsx              ✅ Grid responsivo
-│   ├── home/category-nav.tsx           ✅
-│   ├── navbar.tsx                      ✅
-│   └── search-bar.tsx                  ✅
-│
-├── hooks/
-│   ├── use-event-form.ts               ❌ ARQUIVO MORTO
-│   ├── use-toast.ts                    ✅
-│   └── use-transaction.ts              ✅ Polling de status de pagamento
-│
-└── lib/
-    ├── fee.ts                          ✅ Fonte única da taxa Moove (2%)
-    ├── mercadopago.ts                  ✅
-    ├── prisma.ts                       ✅
-    ├── utils.ts                        ✅
-    └── validations.ts                  ⚠️ createOrderSchema: schema morto
-```
+**Prontidão geral estimada para produção 100%: ~72%**
 
-### 1.2 Arquivos para deletar imediatamente
-
-| Arquivo | Motivo |
-|---|---|
-| `src/components/dashboard/event-form.tsx` | Substituído por `create-event-form.tsx`. Zero importações no codebase. |
-| `src/hooks/use-event-form.ts` | Zero consumidores no codebase. |
-| `createOrderSchema` e `CreateOrderInput` em `src/lib/validations.ts` | Resquício do fluxo de "orders" deletado. Nenhum endpoint ou componente consome. |
-
-### 1.3 Rotas legadas — status
-
-| Rota | Status |
-|---|---|
-| `/events/[id]` | ✅ Mantida como redirect 308 permanente para `/event/[slug]` (SEO) |
-| `/api/orders` | ✅ Removida (fluxo legado) |
-| `/api/events/[id]` | ✅ Removida |
-| `src/components/checkout/` (legado) | ✅ Removido (substituído por `retry-payment-button.tsx`) |
+O sistema **já vende ingressos e processa pagamentos**, mas **não está 100% pronto** até implementar e-mail transacional pós-pagamento, regularizar contas MP dos organizadores e fechar lacunas de operação/testes.
 
 ---
 
-## 2. Mapeamento de Endpoints e Regras Financeiras
+## 1. Inventário do repositório
 
-### 2.1 Mapa completo dos endpoints existentes
+### 1.1 Métricas
 
-| Endpoint | Verbo(s) | Estado | Observações |
-|---|---|---|---|
-| `POST /api/enroll` | POST | ✅ **Completo** | Valida estoque, cria Participant + Transaction |
-| `POST /api/checkout` | POST | ✅ **Completo** | Idempotência, recalcula taxa do banco |
-| `POST /api/webhooks/mercadopago` | POST | ✅ **Completo** | HMAC SHA-256, reconciliação de valor, idempotência |
-| `GET /api/events` | GET | ✅ Público | Lista eventos publicados |
-| `POST /api/events` | POST | ⚠️ **SEM AUTH** | Cria evento sem verificar sessão |
-| `GET/POST /api/admin/events` | GET, POST | ✅ Completo | Protegido via middleware (ADMIN) |
-| `GET/PATCH/DELETE /api/admin/events/[id]` | 3 verbos | ✅ Completo | PATCH valida `totalQuantity >= soldQuantity` |
-| `GET /api/admin/events/[id]/export` | GET | ✅ Completo | CSV com BOM UTF-8, colunas dinâmicas |
-| `GET/PATCH /api/admin/participants/[id]` | GET, PATCH | ✅ Completo | |
-| `GET /api/participants/[id]/transaction` | GET | ✅ Completo | Polling para página de sucesso |
-| `GET/POST /api/auth/[...nextauth]` | GET, POST | ✅ Completo | Auth.js v5 handlers |
+| Métrica | Valor |
+|---------|-------|
+| Arquivos TypeScript/TSX (`src/`, `prisma/`, `scripts/`) | 122 |
+| Linhas de código (aprox.) | **17.213** |
+| Rotas de API (`route.ts`) | **25** |
+| Páginas App Router | **19** |
+| Componentes React | ~55 |
+| Módulos `lib/` | 15 |
+| Migrations Prisma | 5 |
+| Testes unitários | 2 arquivos |
+| CI GitHub Actions | ✅ lint + test + build |
 
-### 2.2 Análise da `calculateMooveFee()` — integridade financeira
+### 1.2 Stack
 
-**Localização:** `src/lib/fee.ts`
+- **Next.js** 16.2.6 (App Router, Turbopack)
+- **React** 19, **TypeScript** 5
+- **Prisma** 5.22 + **PostgreSQL**
+- **Auth.js** v5 (Credentials, JWT)
+- **Mercado Pago** SDK 2.0.15 + `@mercadopago/sdk-react` 1.0.7
+- **Tailwind** 3.4 + Shadcn/ui + Lucide
+- **Deploy:** Vercel (região `gru1`)
 
-**Regra de negócio:**
-- Taxa Moove fixa: `MOOVE_FEE_RATE = 0.02 as const` (2%)
-- Cálculo em centavos (`Math.round(grossCents * 0.02)`) para evitar imprecisão de ponto flutuante
-- Retorna: `{ grossAmount, mooveFee, organizerAmount, feeRateApplied }`
-
-**Chamadas verificadas:**
-
-| Local | Comportamento | Status |
-|---|---|---|
-| `POST /api/enroll` | Chama `calculateMooveFee(unitPriceCents / 100)` após buscar preço do banco | ✅ Correto |
-| `POST /api/checkout` | Chama `calculateMooveFee(Number(ticketType.price))` a partir do Prisma | ✅ Correto |
-| `DynamicEventForm` (client) | Importa `calculateMooveFee` para exibição visual da taxa | ⚠️ Apenas cosmético |
-
-**Conclusão sobre risco de manipulação pelo cliente:**
-
-O cliente **nunca envia valores monetários** para os endpoints críticos:
-- `/api/enroll` recebe apenas `eventId`, `ticketTypeId` e `formData` (nome, email, campos extras)
-- `/api/checkout` recebe apenas `participantId`
-- O preço é sempre lido do banco (`TicketType.price`) e a taxa recalculada no servidor
-
-**Risco identificado (baixo):** o `DynamicEventForm` chama `calculateMooveFee` no cliente para renderizar o valor da taxa na UI. Isso é apenas cosmético e não afeta a Transaction criada no servidor, mas se a regra de taxa mudar no backend, a exibição no front ficará desatualizada.
-
-**Risco crítico:** `POST /api/events` aceita `ticketTypes` com `price` vindo do cliente e cria eventos sem verificar sessão. Qualquer pessoa com acesso à URL pode criar eventos. Este endpoint deve ser **removido ou protegido**.
-
-### 2.3 Fluxo financeiro completo
+### 1.3 Estrutura de diretórios
 
 ```
-Comprador preenche DynamicEventForm
-        │
-        ▼
-POST /api/enroll
-  ├── Busca TicketType.price no banco (fonte da verdade)
-  ├── calculateMooveFee(price) → grossValue, mooveFee, organizerNetValue
-  ├── Cria Participant (REGISTERED) + Transaction (PENDING)
-  ├── Reserva estoque (soldQuantity++)
-  └── Se pago: chama POST /api/checkout internamente
-        │
-        ▼
-POST /api/checkout
-  ├── Recalcula taxa do banco (idempotência)
-  ├── Cria Preference no Mercado Pago (marketplace_fee = mooveFee)
-  └── Retorna initPoint para redirect
-        │
-        ▼
-Mercado Pago processa pagamento
-        │
-        ▼
-POST /api/webhooks/mercadopago
-  ├── Valida assinatura HMAC-SHA256
-  ├── Consulta status real na API do MP
-  ├── Reconcilia transaction_amount vs grossValue
-  ├── APPROVED → Participant CONFIRMED
-  └── REJECTED/CANCELLED → libera estoque (soldQuantity--)
+eventos-omega/
+├── .github/workflows/ci.yml
+├── docs/
+│   └── AUDITORIA-TECNICA.md          ← este documento
+├── prisma/
+│   ├── schema.prisma
+│   ├── seed.ts
+│   └── migrations/                   (5 migrations)
+├── public/brand/                     (logo, favicon)
+├── scripts/smoke-home.ts
+├── src/
+│   ├── app/
+│   │   ├── admin/(panel)/            (login, dashboard, eventos, sponsors)
+│   │   ├── api/                      (25 handlers — ver §2)
+│   │   ├── checkout/[id]/          (checkout embarcado)
+│   │   ├── dashboard/              (organizador)
+│   │   ├── event/[slug]/           (página pública + inscrição)
+│   │   ├── events/[id]/            (redirect legado)
+│   │   ├── meus-ingressos/         (consulta por e-mail)
+│   │   ├── payment/{success,failure}/
+│   │   └── page.tsx                  (home)
+│   ├── auth.config.ts, auth.ts, middleware.ts
+│   ├── components/                 (admin, auth, checkout, dashboard, events, home, tickets, ui)
+│   ├── hooks/                        (use-toast, use-transaction)
+│   ├── lib/                          (fee, mercadopago, oauth, validations, etc.)
+│   └── types/
+├── .env.example
+├── next.config.ts
+├── vercel.json
+└── package.json
 ```
 
 ---
 
-## 3. Diagnóstico de Componentes e Interface
+## 2. Mapeamento de rotas e APIs
 
-### 3.1 DynamicEventForm
+### 2.1 Páginas públicas
 
-**Arquivo:** `src/components/events/dynamic-event-form.tsx`  
-**Estado:** ✅ **FUNCIONAL E COMPLETO**
+| Rota | Função | Status |
+|------|--------|--------|
+| `/` | Home: carrossel, categorias, grid de eventos, patrocinadores, FAQ | ✅ |
+| `/event/[slug]` | Detalhe do evento + formulário de inscrição dinâmico | ✅ |
+| `/events/[id]` | Redirect 308 → `/event/[slug]` | ✅ |
+| `/meus-ingressos` | Busca ingressos por e-mail (sem login) | ✅ |
+| `/checkout/[id]` | Checkout embarcado / retentativa de pagamento | ✅ |
+| `/payment/success` | Landing pós-pagamento MP | ⚠️ Genérica |
+| `/payment/failure` | Landing de falha MP | ✅ |
 
-- Renderiza campos fixos (nome + email) + campos dinâmicos do `formStructure`
-- Suporta todos os tipos: `text`, `email`, `tel`, `number`, `select`, `checkbox`, `textarea`
-- Envia `POST /api/enroll` com `eventId`, `ticketTypeId` e `formData`
-- Trata loading, erros de validação (422), estoque esgotado (409) e redirect para Mercado Pago
-- Serializa `price` como `number` (não `Decimal`) para cruzar a fronteira server→client
+### 2.2 Painéis autenticados
 
-### 3.2 ParticipantTable
+| Rota | Papel | Função | Status |
+|------|-------|--------|--------|
+| `/admin/login` | Público | Login unificado | ✅ |
+| `/admin` | ADMIN | Lista de eventos + KPIs | ✅ |
+| `/admin/dashboard` | ADMIN | Dashboard financeiro plataforma | ✅ |
+| `/admin/sponsors` | ADMIN | Patrocinadores/banners globais | ✅ |
+| `/admin/events/*` | ADMIN | CRUD eventos + participantes + export CSV | ✅ |
+| `/dashboard` | ORGANIZER/ADMIN | Painel organizador + conectar MP | ✅ |
+| `/dashboard/events/*` | ORGANIZER/ADMIN | CRUD eventos próprios | ✅ |
+| `/dashboard/sponsors` | ADMIN | Mídias de patrocinadores por evento | ✅ |
 
-**Arquivo:** `src/components/admin/participant-table.tsx`  
-**Estado:** ✅ **FUNCIONAL E COMPLETO**
+**Middleware:** `/admin/*` → ADMIN; `/dashboard/*` → ADMIN ou ORGANIZER.
 
-- Tabela com paginação (10 por página), busca local por nome/email/ordem
-- Badges de status de inscrição e pagamento com cores semânticas
-- Ordenação por ordem de compra ou nome (A-Z)
-- Coluna dinâmica: renderiza campos extras do `formData` (resposta ao `formStructure`)
-- Integra `ParticipantEditDialog` para edição inline de status
-- Botão de export CSV via `/api/admin/events/[id]/export`
+### 2.3 APIs (25 arquivos)
 
-### 3.3 FormBuilder
+#### Pagamentos e inscrição
 
-**Arquivo:** `src/components/admin/form-builder.tsx`  
-**Estado:** ✅ **FUNCIONAL E COMPLETO**
+| Endpoint | Método | Função |
+|----------|--------|--------|
+| `/api/enroll` | POST | Inscrição pública, estoque, fees no servidor, redirect checkout |
+| `/api/checkout` | POST | Cria MP Preference (marketplace_fee, OAuth organizador) |
+| `/api/payments/process` | POST | Payment Brick → MP Payment (application_fee) |
+| `/api/webhooks/mercadopago` | GET/POST | IPN HMAC, reconciliação, idempotência, libera estoque |
+| `/api/participants/[id]/transaction` | GET | Polling de status (e-mail ou manager) |
+| `/api/my-tickets` | GET | Lista inscrições por e-mail |
 
-- Editor visual que produz e consome o JSON `EventFormStructure`
-- Suporta 8 tipos de campo: text, email, tel, number, url, select, checkbox, textarea
-- Para campos `select`: adiciona/remove opções dinamicamente
-- Reordenação por chevrons ↑↓, toggle de obrigatoriedade
-- Visualização do JSON gerado em tempo real
+#### Mercado Pago OAuth
 
-### 3.4 Estrutura do `formStructure` no banco
+| Endpoint | Método | Função |
+|----------|--------|--------|
+| `/api/mercadopago/connect` | GET | Inicia OAuth organizador |
+| `/api/mercadopago/callback` | GET | Callback OAuth, persiste tokens |
+| `/api/mercadopago/disconnect` | POST | Desconecta conta MP |
 
-**Schema Prisma:**
-```prisma
-model Event {
-  formStructure Json @default("{\"fields\":[]}")
-  // ...
-}
+#### Eventos e admin
 
-model Participant {
-  formData Json @default("{}")
-  // ...
-}
-```
-
-**Tipagem TypeScript (`src/types/index.ts`):**
-```typescript
-interface FormField {
-  name: string          // snake_case, ex: "cpf_participante"
-  label: string         // rótulo exibido, ex: "CPF do Participante"
-  type: "text" | "email" | "tel" | "number" | "select" | "checkbox" | "textarea"
-  required?: boolean
-  options?: string[]    // apenas para type === "select"
-  placeholder?: string
-}
-
-interface EventFormStructure {
-  fields: FormField[]
-}
-```
-
-**Exemplo real (seed evento OmegaConf Tech 2026):**
-```json
-{
-  "fields": [
-    { "name": "empresa",  "label": "Empresa / Organização", "type": "text",   "required": false },
-    { "name": "cargo",    "label": "Cargo",                 "type": "text",   "required": false },
-    { "name": "nivel",    "label": "Nível de Experiência",  "type": "select", "required": true,
-      "options": ["Júnior", "Pleno", "Sênior", "Tech Lead", "Gestor"] },
-    { "name": "linkedin", "label": "Perfil do LinkedIn",    "type": "url",    "required": false },
-    { "name": "termos",   "label": "Aceito receber comunicações", "type": "checkbox", "required": false }
-  ]
-}
-```
-
-A validação dos campos obrigatórios ocorre corretamente no `POST /api/enroll` iterando `formStructure.fields`.
+| Endpoint | Métodos | Função |
+|----------|---------|--------|
+| `/api/events` | GET, POST | Lista publicados / cria (auth) |
+| `/api/events/featured` | GET | Eventos em destaque (home) |
+| `/api/events/cities` | GET | Filtro por cidade |
+| `/api/admin/events` | GET, POST | Admin: eventos + métricas |
+| `/api/admin/events/[id]` | GET, PATCH | Detalhe + update |
+| `/api/admin/events/[id]/export` | GET | Export CSV participantes |
+| `/api/admin/events/[id]/sponsors` | GET, POST | Patrocinadores do evento |
+| `/api/admin/events/[id]/sponsors/[sponsorId]` | PATCH, DELETE | CRUD sponsor |
+| `/api/admin/participants/[id]` | PATCH | Editar formData participante |
+| `/api/admin/platform-banners` | GET, POST | Banners home |
+| `/api/admin/platform-banners/[id]` | PATCH, DELETE | CRUD banner |
+| `/api/admin/platform-sponsors` | GET, POST | Logos patrocinadores |
+| `/api/admin/platform-sponsors/[id]` | PATCH, DELETE | CRUD logo |
+| `/api/promo/sponsors` | GET | Banners ativos (público) |
+| `/api/promo/platform-sponsors` | GET | Logos ativos (público) |
+| `/api/auth/[...nextauth]` | GET, POST | Auth.js handlers |
 
 ---
 
-## 4. Lacunas e Pontos Quebrados
+## 3. Modelo de dados (Prisma)
 
-### 4.1 Next-Auth — estado atual
+| Modelo | Papel |
+|--------|-------|
+| `User` | ADMIN / ORGANIZER / BUYER + tokens OAuth MP |
+| `Event` | Evento + `formStructure` JSON dinâmico |
+| `TicketType` | Tipos de ingresso + controle de estoque |
+| `Participant` | Inscrição + `ordemCompra` sequencial + `formData` |
+| `Transaction` | grossValue, mooveFee, organizerNetValue, status MP |
+| `EventSponsorMedia` | Patrocinadores por evento |
+| `PlatformSponsor` | Logos globais home |
+| `PlatformBannerMedia` | Banners promocionais home |
 
-| Item | Estado |
-|---|---|
-| `next-auth` instalado | ✅ v5.0.0-beta.25 |
-| `src/auth.config.ts` (Edge) | ✅ Callbacks `authorized`, `jwt`, `session` |
-| `src/auth.ts` (Node.js) | ✅ `CredentialsProvider` + Prisma + bcryptjs |
-| `src/app/api/auth/[...nextauth]/route.ts` | ✅ Handlers GET/POST |
-| `src/middleware.ts` | ✅ Em `src/` (correção crítica de localização) |
-| Cookie `admin_token` | ✅ **Removido** |
-| `SessionProvider` no root layout | ✅ Adicionado |
-| `/admin/login` | ✅ Sympla minimalista com `LoginForm` |
-| `User.password` no schema | ✅ Migração aplicada |
-| Admin seed com senha hash | ✅ `admin@eventosomega.com / Admin@2026!` |
-| Proteção `/admin/*` → ADMIN only | ✅ Testado (307 sem sessão) |
-| Proteção `/dashboard/*` → ORGANIZER+ADMIN | ✅ Testado (307 sem sessão) |
-
-**Bug crítico resolvido:** o middleware estava em `middleware.ts` na raiz do projeto. Em projetos Next.js com estrutura `src/`, o Next.js ignora o arquivo na raiz e só lê `src/middleware.ts`. Após mover o arquivo, o middleware passou a interceptar corretamente todas as rotas.
-
-**Credenciais de desenvolvimento:**
-
-| Role | E-mail | Senha |
-|---|---|---|
-| ADMIN | `admin@eventosomega.com` | `Admin@2026!` |
-| ORGANIZER | `organizer@eventosomega.com` | `Org@2026!` |
-
-### 4.2 Rotas verificadas
-
-| Rota | Estado | Observação |
-|---|---|---|
-| `/admin/login` | ✅ Existe e funcional | Login unificado Admin + Organizer |
-| `/checkout/[id]` | ✅ Existe e funcional | Retry de pagamento com `RetryPaymentButton` |
-| Busca na Home (`?q=`) | ✅ Implementada | Server Component + `SearchBar` com debounce 300ms |
-| `/event/[slug]` | ✅ Completa | Layout 2 colunas Sympla |
-| `/dashboard/events/new` | ✅ Completa | Formulário Sympla 7 seções |
-| `/admin/events/new` | ⚠️ Incompleta | Usa `AdminEventForm` (básico), não o Sympla |
-
-### 4.3 Lacunas identificadas
-
-#### Crítica — `POST /api/events` sem autenticação
-O endpoint `POST /api/events` aceita criação de eventos sem verificar sessão. Qualquer pessoa com acesso à URL pode criar eventos. A criação deve passar somente por `POST /api/admin/events` (protegido via middleware).
-
-**Ação recomendada:** Remover o handler `POST` de `/api/events/route.ts` ou adicionar guard de sessão com role `ADMIN`/`ORGANIZER`.
-
-#### Alta — `/dashboard/page.tsx` sem filtro por organizador
-O painel do organizador busca **todos os eventos** com `prisma.event.findMany()` sem `where: { organizerId: session.user.id }`. Qualquer usuário com role `ORGANIZER` vê os eventos de todos.
-
-**Ação recomendada:** Adicionar filtro por `organizerId` usando `session.user.id` do Auth.js.
-
-#### Média — Formulário de criação admin desatualizado
-`/admin/events/new` usa `AdminEventForm` (formulário de edição com campos básicos), enquanto `/dashboard/events/new` usa o novo `CreateEventForm` (7 seções Sympla). Inconsistência no fluxo admin vs organizador.
-
-**Ação recomendada:** Unificar `/admin/events/new` para usar `CreateEventForm` ou `AdminEventForm` com as mesmas seções.
-
-#### Baixa — Exibição de taxa no cliente
-`DynamicEventForm` importa e chama `calculateMooveFee` no cliente para renderizar o valor da taxa na UI. Sem risco financeiro real (a Transaction é criada no servidor), mas arquiteturalmente a exibição deveria vir do servidor.
+**Observação:** Comentários no schema ainda citam taxa de **2%** — código real usa **5,5%** (`src/lib/fee.ts`).
 
 ---
 
-## 5. Resumo Executivo
+## 4. Regra financeira (Moove)
 
-### ✅ Pronto e funcional
+| Item | Valor atual |
+|------|-------------|
+| Taxa Moove | **5,5%** sobre valor bruto (`MOOVE_FEE_RATE = 0.055`) |
+| Cálculo | Servidor only — `calculateMooveFee()` em centavos |
+| Split MP | `marketplace_fee` (Preference) + `application_fee` (Payment) |
+| Token pagamento | OAuth do **organizador** |
+| Token webhook | Access token da **plataforma Moove** |
 
-- **Camada financeira completa:** `fee.ts`, `/api/enroll`, `/api/checkout`, `/api/webhooks/mercadopago` (HMAC, reconciliação de valor, idempotência, liberação de estoque)
-- **Auth.js v5 completo:** login, sessão JWT com `role` + `mercadoPagoUserId`, middleware com proteção por role em `src/middleware.ts`
-- **Página pública `/event/[slug]`** com layout two-column estilo Sympla
-- **Home com busca server-side** debounced (`?q=` em title, description, city, venue)
-- **Formulário de criação de evento** 7 seções Sympla (`/dashboard/events/new`)
-- **`DynamicEventForm`, `ParticipantTable`, `FormBuilder`** — todos funcionais e completos
-- **Redirect 308** `/events/[id]` → `/event/[slug]` preservado para SEO
-- **Rota de retry de pagamento** `/checkout/[id]`
-- **Export CSV** de participantes (`/api/admin/events/[id]/export`)
-- **Dashboard financeiro** `/admin/dashboard` com KPIs e ranking de eventos
-
-### ⚠️ Incompleto — precisa de atenção
-
-| Prioridade | Item | Ação |
-|---|---|---|
-| 🔴 Crítica | `POST /api/events` sem autenticação | Remover handler POST ou adicionar guard de sessão |
-| 🟠 Alta | `/dashboard/page.tsx` sem filtro por `organizerId` | Adicionar `where: { organizerId: userId }` |
-| 🟡 Média | `/admin/events/new` usa formulário desatualizado | Unificar com `CreateEventForm` (Sympla) |
-| 🟢 Baixa | Taxa Moove calculada no cliente para UI | Mover exibição para server component |
-
-### ❌ Deletar imediatamente
-
-| Arquivo | Motivo |
-|---|---|
-| `src/components/dashboard/event-form.tsx` | Formulário legado sem nenhum consumidor |
-| `src/hooks/use-event-form.ts` | Hook sem nenhum consumidor |
-| `createOrderSchema` + `CreateOrderInput` em `validations.ts` | Resquício do fluxo de "orders" removido |
+**Inconsistência documental:** comentários em `enroll/route.ts`, `checkout/route.ts`, `schema.prisma` e UI antiga ainda mencionam 2%. Corrigir comentários para evitar confusão operacional.
 
 ---
 
-*Documento gerado em 20/05/2026. Para atualizar, re-executar a varredura do repositório.*
+## 5. Fluxo de pagamentos (análise detalhada)
+
+### 5.1 Fluxo completo
+
+```
+1. Comprador preenche formulário em /event/[slug]
+2. POST /api/enroll
+   → Participant (REGISTERED) + Transaction (PENDING)
+   → soldQuantity++
+   → redirectTo: /checkout/{participantId}
+
+3. /checkout/[id]
+   → EmbeddedPaymentCheckout (Payment Brick MP)
+   → POST /api/checkout (se necessário) → Preference MP
+
+4. Comprador clica Pagar
+   → POST /api/payments/process
+   → MP Payment com application_fee (split)
+
+5. PIX pendente:
+   → Resposta API com qr_code + qr_code_base64
+   → PixPaymentDisplay (QR + botão copiar)
+   → Fallback: StatusScreen Brick
+
+6. Cartão aprovado:
+   → redirect /payment/success
+
+7. MP envia webhook POST /api/webhooks/mercadopago
+   → HMAC-SHA256 validado
+   → Busca payment na API MP
+   → Reconcilia valor (anti-fraude)
+   → APPROVED → Participant CONFIRMED
+   → REJECTED/CANCELLED → libera estoque
+```
+
+### 5.2 PIX — status atual
+
+| Requisito | Status | Arquivo |
+|-----------|--------|---------|
+| Seleção PIX no Payment Brick | ✅ | `embedded-payment-checkout.tsx` |
+| Criação pagamento PIX no backend | ✅ | `api/payments/process/route.ts` |
+| QR Code na tela | ✅ | `pix-payment-display.tsx` |
+| Código copia e cola + botão copiar | ✅ | `pix-payment-display.tsx` |
+| Reabrir QR de PIX pendente | ⚠️ Parcial | StatusScreen (sem fetch PIX ao reabrir) |
+| Mensagem de erro visível se falhar | ✅ | Alerta vermelho no checkout |
+| Link ticket_url MP | ✅ | Link "Abrir pagamento no Mercado Pago" |
+
+### 5.3 Bloqueadores conhecidos de pagamento
+
+1. **Organizador sem conta MP conectada** → checkout retorna 422 `ORGANIZER_MP_NOT_CONNECTED`
+2. **Conta MP do organizador não habilitada para receber** → erro MP (ex.: "COLEGIO OMEGA não pode receber pagamentos") — **configuração no painel MP**, não código
+3. **Organizador precisa completar cadastro vendedor** no Mercado Pago (KYC, dados bancários)
+4. **Webhook secret** deve estar configurado na Vercel (`MERCADOPAGO_WEBHOOK_SECRET`)
+5. **Redirect OAuth** deve apontar para `{NEXT_PUBLIC_APP_URL}/api/mercadopago/callback`
+
+### 5.4 Webhook — pontos fortes
+
+- ✅ Validação HMAC com `timingSafeEqual`
+- ✅ Consulta status real na API MP (não confia só no payload)
+- ✅ Reconciliação de valor (bloqueia aprovação se amount ≠ grossValue)
+- ✅ Idempotência (status final ignorado)
+- ✅ Libera estoque em cancelamento/rejeição
+- ✅ GET health check + simulação MP (id `123456`) retorna 200
+
+### 5.5 Webhook — lacunas
+
+- ❌ **Não dispara e-mail** após `APPROVED`
+- ❌ Não registra log estruturado (Sentry/Datadog)
+- ⚠️ Usa token da **plataforma** para buscar payment criado com token do **organizador** — funciona em marketplace, mas deve ser monitorado
+
+---
+
+## 6. Envio de ingresso por e-mail — LACUNA CRÍTICA
+
+### 6.1 Situação atual
+
+**Não existe nenhum sistema de e-mail transacional.**
+
+- ❌ Sem `nodemailer`, Resend, SendGrid, AWS SES ou similar nas dependências
+- ❌ Sem templates de e-mail
+- ❌ Sem envio após pagamento aprovado (webhook ou `/api/payments/process`)
+- ❌ Sem envio para ingressos gratuitos confirmados
+- ❌ Sem recuperação de senha por e-mail
+- ❌ Sem notificação ao organizador de nova venda
+
+O e-mail aparece apenas como:
+- Campo de identificação do usuário
+- E-mail do pagador no Mercado Pago
+- Consulta manual em `/meus-ingressos`
+
+### 6.2 O que falta implementar (mínimo produção)
+
+| # | Item | Prioridade |
+|---|------|------------|
+| 1 | Provedor de e-mail (Resend recomendado — simples na Vercel) | P0 |
+| 2 | Variáveis: `RESEND_API_KEY`, `EMAIL_FROM` | P0 |
+| 3 | Template HTML: confirmação de ingresso | P0 |
+| 4 | Disparo no webhook `handleApproved()` e em pagamento cartão aprovado síncrono | P0 |
+| 5 | Disparo em inscrição gratuita (`/api/enroll`) | P1 |
+| 6 | Anexo PDF ou link para ingresso digital | P1 |
+| 7 | Idempotência (não reenviar e-mail duplicado) | P1 |
+| 8 | Fila/retry em caso de falha de envio | P2 |
+
+### 6.3 Conteúdo sugerido do e-mail de ingresso
+
+- Nome do participante
+- Número da inscrição (`#ordemCompra`)
+- Evento, data, local
+- Tipo de ingresso
+- Valor pago
+- QR Code para check-in (quando implementado)
+- Link para `/meus-ingressos`
+
+---
+
+## 7. Ingresso digital e check-in
+
+| Funcionalidade | Status |
+|----------------|--------|
+| Número sequencial `ordemCompra` | ✅ Existe no banco |
+| QR Code de check-in | ❌ Não implementado |
+| PDF de ingresso | ❌ Não implementado |
+| Página de ingresso individual | ❌ Não existe (`/ingresso/[id]`) |
+| Validação check-in (scanner) | ❌ Não existe |
+| Status `CHECKED_IN` no schema | ✅ Existe, sem UI |
+
+O schema menciona QR para check-in, mas **nenhum código gera ou valida QR**.
+
+---
+
+## 8. Funcionalidades por módulo
+
+### 8.1 ✅ Prontas ou quase prontas
+
+- Home com busca, categorias, patrocinadores
+- Criação/edição de eventos (organizador + admin)
+- Formulário dinâmico por evento (`formStructure`)
+- Inscrição com controle de estoque (transação Prisma)
+- Ingressos gratuitos (confirmação imediata)
+- Checkout embarcado Mercado Pago (cartão, PIX, boleto)
+- Split marketplace Moove 5,5%
+- OAuth conectar/desconectar MP no dashboard
+- Webhook com segurança
+- Meus ingressos (consulta por e-mail)
+- Export CSV de participantes
+- Patrocinadores (evento + plataforma)
+- Auth por credenciais (admin/organizador)
+- CI (lint + test + build)
+
+### 8.2 ⚠️ Parciais
+
+- PIX ao reabrir checkout pendente (depende StatusScreen, sem cache PIX)
+- Página `/payment/success` (genérica, não mostra dados do ingresso)
+- Testes (só `fee.test.ts` e `home-query.test.ts`)
+- Mídias em base64 no banco (funciona, risco de bloat)
+- Rate limiting em APIs públicas (`/api/enroll`, `/api/my-tickets`)
+
+### 8.3 ❌ Ausentes (bloqueiam 100%)
+
+- **E-mail transacional pós-pagamento**
+- Ingresso PDF/QR digital
+- Check-in no evento
+- Recuperação de senha
+- Monitoramento/alertas (Sentry)
+- Testes E2E do fluxo de pagamento
+- Storage externo para imagens (S3/Cloudinary upload server-side)
+
+---
+
+## 9. Variáveis de ambiente (produção)
+
+| Variável | Obrigatória | Configurada? |
+|----------|-------------|--------------|
+| `DATABASE_URL` | Sim | ✅ Vercel |
+| `DIRECT_URL` | Sim (migrations) | ✅ |
+| `AUTH_SECRET` | Sim | ✅ |
+| `MERCADOPAGO_ACCESS_TOKEN` | Sim | ✅ |
+| `MERCADOPAGO_CLIENT_ID` | Sim | ✅ |
+| `MERCADOPAGO_CLIENT_SECRET` | Sim | ✅ |
+| `NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY` | Sim | ✅ |
+| `MERCADOPAGO_WEBHOOK_SECRET` | Sim | ✅ |
+| `NEXT_PUBLIC_APP_URL` | Sim | ✅ |
+| `RESEND_API_KEY` ou similar | **Falta** | ❌ |
+| `EMAIL_FROM` | **Falta** | ❌ |
+
+---
+
+## 10. Segurança
+
+| Item | Status |
+|------|--------|
+| Fees calculadas no servidor | ✅ |
+| Webhook HMAC | ✅ |
+| Reconciliação de valor | ✅ |
+| Middleware por role | ✅ |
+| POST `/api/events` protegido | ✅ (corrigido desde auditoria anterior) |
+| Dashboard filtra por organizerId | ✅ |
+| Tokens OAuth MP no servidor only | ✅ |
+| Rate limiting | ❌ |
+| CSRF em forms | N/A (API JSON) |
+| Secrets no repositório | ⚠️ Verificar — nunca commitar `.env.local` |
+
+---
+
+## 11. Testes e CI
+
+| Tipo | Cobertura |
+|------|-----------|
+| Unitário `fee.ts` | ✅ 5,5%, arredondamento |
+| Unitário `home-query.ts` | ✅ URLs e OAuth state |
+| Smoke `scripts/smoke-home.ts` | ✅ Seed + APIs home |
+| Integração pagamento | ❌ |
+| E2E checkout PIX | ❌ |
+| CI GitHub Actions | ✅ lint + test + build |
+
+---
+
+## 12. Roadmap para produção 100%
+
+### Fase 1 — Bloqueadores imediatos (P0)
+
+| # | Tarefa | Esforço |
+|---|--------|---------|
+| 1 | **Implementar e-mail de confirmação de ingresso** (Resend + template + webhook) | 1–2 dias |
+| 2 | Regularizar conta MP do organizador Colégio Omega (painel MP) | Operacional |
+| 3 | Garantir todos organizadores conectaram MP antes de vender ingresso pago | Operacional |
+| 4 | Testar fluxo PIX completo em produção (e-mail → pagar → QR → webhook → confirmado) | 2–4 h |
+| 5 | Corrigir comentários/docs que ainda citam taxa 2% | 1 h |
+
+### Fase 2 — Experiência do comprador (P1)
+
+| # | Tarefa | Esforço |
+|---|--------|---------|
+| 6 | Página `/payment/success` com dados reais do ingresso (busca por `external_reference`) | 4 h |
+| 7 | Ingresso digital: QR code + página `/ingresso/[ordemCompra]` | 1–2 dias |
+| 8 | E-mail também para ingresso gratuito | 2 h |
+| 9 | Fetch PIX ao reabrir checkout pendente (API GET payment status) | 4 h |
+| 10 | Rate limiting em `/api/enroll` e `/api/my-tickets` | 4 h |
+
+### Fase 3 — Operação e qualidade (P2)
+
+| # | Tarefa | Esforço |
+|---|--------|---------|
+| 11 | Sentry ou similar para erros de pagamento/webhook | 4 h |
+| 12 | Testes E2E (Playwright) fluxo inscrição + checkout | 2–3 dias |
+| 13 | Upload de imagens para storage externo (Cloudinary/S3) | 1–2 dias |
+| 14 | Check-in scanner para organizador | 2–3 dias |
+| 15 | Notificação ao organizador (nova venda por e-mail) | 4 h |
+
+---
+
+## 13. Checklist go-live 100%
+
+```
+Infraestrutura
+[✅] Deploy Vercel produção
+[✅] PostgreSQL (Neon/similar)
+[✅] Migrations aplicadas
+[✅] Variáveis MP configuradas
+[✅] Webhook MP apontando para /api/webhooks/mercadopago
+[❌] Provedor de e-mail configurado
+
+Pagamentos
+[✅] OAuth marketplace configurado
+[⚠️] Organizadores com conta MP habilitada para receber
+[✅] Checkout embarcado (Payment Brick)
+[✅] PIX QR + copia e cola
+[✅] Webhook HMAC + reconciliação
+[❌] Teste ponta a ponta documentado em produção
+
+Pós-venda
+[❌] E-mail automático com ingresso após pagamento
+[❌] PDF ou QR de ingresso
+[⚠️] Meus ingressos (consulta manual funciona)
+
+Qualidade
+[✅] CI passando
+[⚠️] Cobertura de testes mínima
+[❌] Monitoramento de erros
+[❌] Rate limiting
+```
+
+---
+
+## 14. Conclusão
+
+O **EventosOmega** é uma plataforma funcional e bem estruturada para venda de ingressos com split Mercado Pago. O núcleo (inscrição, estoque, checkout embarcado, webhook, PIX com QR) **está implementado**.
+
+Para atingir **produção 100%** com todas as funcionalidades solicitadas:
+
+1. **E-mail de ingresso após pagamento** — maior lacuna; zero implementado hoje
+2. **Conta MP do organizador habilitada** — bloqueio operacional em produção
+3. **Ingresso digital (QR/PDF)** — complemento essencial ao e-mail
+4. **Testes e monitoramento** — confiança operacional
+
+**Prioridade #1:** implementar serviço de e-mail + disparo no webhook `APPROVED` e no fluxo de cartão aprovado.
+
+---
+
+*Auditoria gerada em 22/05/2026 — EventosOmega v0.1.0*
