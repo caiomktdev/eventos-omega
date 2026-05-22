@@ -25,7 +25,7 @@ import {
   Info,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { formatCurrency } from "@/lib/fee";
+import { formatCurrency, getMooveFeePercentLabel } from "@/lib/fee";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -282,6 +282,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const { eventId } = await searchParams;
   const data = await getDashboardData(eventId);
   const { kpis, eventOptions, ranking, isFiltered, filteredEventTitle } = data;
+  const mooveFeePercentLabel = getMooveFeePercentLabel();
 
   const kpiCards: KpiCardProps[] = [
     {
@@ -307,10 +308,10 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     {
       title: "Lucro Líquido Moove",
       value: formatCurrency(kpis.mooveFee),
-      subtitle: "2% retido como taxa de intermediação",
+      subtitle: `${mooveFeePercentLabel} retido como taxa de intermediação`,
       icon: TrendingUp,
       accent: "amber",
-      tooltip: "Soma de Transaction.mooveFee onde status = APPROVED (2% do bruto, calculado no servidor)",
+      tooltip: `Soma de Transaction.mooveFee onde status = APPROVED (${mooveFeePercentLabel} do bruto, calculado no servidor)`,
     },
     {
       title: "Repasse ao Organizador",

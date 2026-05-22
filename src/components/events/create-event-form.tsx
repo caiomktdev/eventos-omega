@@ -980,7 +980,7 @@ export function CreateEventForm({
                 <li>O organizador é responsável por todas as informações divulgadas sobre o evento.</li>
                 <li>
                   A taxa de intermediação da plataforma é de{" "}
-                  <strong className="text-gray-800">2%</strong> sobre o valor bruto de cada venda,
+                  <strong className="text-gray-800">5,5%</strong> sobre o valor bruto de cada venda,
                   calculada automaticamente no servidor.
                 </li>
                 <li>O reembolso de participantes deve seguir a política do organizador, respeitando o CDC.</li>

@@ -1,6 +1,6 @@
 /**
  * Card de conexão Mercado Pago no dashboard do organizador.
- * Split marketplace: organizador recebe 98%, Moove retém 2% via marketplace_fee.
+ * Split marketplace: organizador recebe ~94,5%, Moove retém 5,5% via marketplace_fee.
  */
 
 import Link from "next/link";
@@ -38,7 +38,7 @@ export function MercadoPagoConnectCard({
             </CardTitle>
             <CardDescription className="max-w-2xl text-sm leading-relaxed">
               Conecte sua conta para receber pagamentos de ingressos. A Moove
-              retém automaticamente 2% por venda; o restante é repassado para
+              retém automaticamente 5,5% por venda; o restante é repassado para
               você pelo Mercado Pago.
             </CardDescription>
           </div>

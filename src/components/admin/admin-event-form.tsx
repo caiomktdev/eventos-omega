@@ -385,7 +385,7 @@ export function AdminEventForm({
         <CardHeader>
           <CardTitle>Tipos de Ingresso</CardTitle>
           <CardDescription>
-            Os preços são base para o cálculo da taxa Moove (2%) no servidor.
+            Os preços são base para o cálculo da taxa Moove (5,5%) no servidor.
             {mode === "edit" && (
               <span className="block mt-1 text-amber-600">
                 Atenção: a quantidade total não pode ser menor que os ingressos já vendidos.

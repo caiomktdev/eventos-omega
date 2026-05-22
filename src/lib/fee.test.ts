@@ -3,18 +3,18 @@ import { describe, it } from "node:test";
 import { calculateMooveFee, formatCurrency } from "./fee";
 
 describe("calculateMooveFee", () => {
-  it("calcula 2% sobre o valor bruto", () => {
+  it("calcula 5,5% sobre o valor bruto", () => {
     const result = calculateMooveFee(100);
     assert.equal(result.grossAmount, 100);
-    assert.equal(result.mooveFee, 2);
-    assert.equal(result.organizerAmount, 98);
-    assert.equal(result.feeRateApplied, 0.02);
+    assert.equal(result.mooveFee, 5.5);
+    assert.equal(result.organizerAmount, 94.5);
+    assert.equal(result.feeRateApplied, 0.055);
   });
 
   it("arredonda centavos corretamente", () => {
     const result = calculateMooveFee(33.33);
-    assert.equal(result.mooveFee, 0.67);
-    assert.equal(result.organizerAmount, 32.66);
+    assert.equal(result.mooveFee, 1.83);
+    assert.equal(result.organizerAmount, 31.5);
   });
 
   it("rejeita valores inválidos", () => {

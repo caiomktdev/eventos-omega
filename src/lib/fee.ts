@@ -2,12 +2,12 @@
  * Módulo de cálculo da taxa de intermediação Moove.
  *
  * REGRA DE NEGÓCIO CRÍTICA:
- * A taxa Moove é SEMPRE 2% sobre o valor bruto, calculada no servidor.
+ * A taxa Moove é SEMPRE 5,5% sobre o valor bruto, calculada no servidor.
  * Este valor é imutável — nunca deve ser alterado por input do cliente.
  */
 
-// Percentual fixo e imutável da taxa Moove (2%)
-const MOOVE_FEE_RATE = 0.02 as const;
+// Percentual fixo e imutável da taxa Moove (5,5%)
+const MOOVE_FEE_RATE = 0.055 as const;
 
 export interface FeeCalculation {
   grossAmount: number;
@@ -58,5 +58,8 @@ export function formatCurrency(value: number): string {
  * Retorna a taxa Moove em percentual formatado para exibição
  */
 export function getMooveFeePercentLabel(): string {
-  return `${(MOOVE_FEE_RATE * 100).toFixed(0)}%`;
+  const percent = MOOVE_FEE_RATE * 100;
+  return Number.isInteger(percent)
+    ? `${percent}%`
+    : `${percent.toFixed(1).replace(".", ",")}%`;
 }

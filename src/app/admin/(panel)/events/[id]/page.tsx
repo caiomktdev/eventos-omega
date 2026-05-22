@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { formatCurrency } from "@/lib/fee";
+import { formatCurrency, getMooveFeePercentLabel } from "@/lib/fee";
 import { ParticipantTable } from "@/components/admin/participant-table";
 import { EventStatusActions } from "@/components/admin/event-status-actions";
 import type { EventFormStructure } from "@/types";
@@ -108,6 +108,8 @@ export default async function AdminEventDetailPage({ params }: PageProps) {
   const event = await getEventWithParticipants(id);
 
   if (!event) notFound();
+
+  const mooveFeePercentLabel = getMooveFeePercentLabel();
 
   // --- Métricas financeiras ---
   const confirmedParticipants = event.participants.filter(
@@ -248,7 +250,7 @@ export default async function AdminEventDetailPage({ params }: PageProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Taxa Moove (2%)
+              Taxa Moove ({mooveFeePercentLabel})
             </CardTitle>
             <TrendingDown className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
@@ -257,7 +259,7 @@ export default async function AdminEventDetailPage({ params }: PageProps) {
               {formatCurrency(totalMooveFees)}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              2% retido como intermediação
+              {mooveFeePercentLabel} retido como intermediação
             </p>
           </CardContent>
         </Card>

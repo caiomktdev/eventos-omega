@@ -32,7 +32,7 @@ import {
 import type { Metadata } from "next";
 
 import { prisma } from "@/lib/prisma";
-import { formatCurrency } from "@/lib/fee";
+import { formatCurrency, getMooveFeePercentLabel } from "@/lib/fee";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -134,6 +134,7 @@ export default async function CheckoutRetryPage({ params }: PageProps) {
   const formData = data.formData as Record<string, string> | null;
   const participantName = formData?.nome ?? formData?.name ?? "Participante";
   const payerEmail = formData?.email ?? "";
+  const mooveFeePercentLabel = getMooveFeePercentLabel();
 
   const { label: statusLabel, variant: statusVariant } = txStatusLabel(txStatus);
 
@@ -306,7 +307,7 @@ export default async function CheckoutRetryPage({ params }: PageProps) {
                     </div>
                     {Number(transaction.grossValue) > 0 && (
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Taxa de serviço (2%)</span>
+                        <span>Taxa de serviço ({mooveFeePercentLabel})</span>
                         <span>{formatCurrency(Number(transaction.mooveFee))}</span>
                       </div>
                     )}
