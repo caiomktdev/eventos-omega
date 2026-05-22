@@ -19,6 +19,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { enrollSchema } from "@/lib/validations";
 import { calculateMooveFee } from "@/lib/fee";
+import { sendTicketConfirmationEmailAsync } from "@/lib/email/ticket-confirmation";
 import { ZodError } from "zod";
 import type { EventFormStructure } from "@/types";
 
@@ -244,6 +245,8 @@ export async function POST(request: Request) {
         { status: 201 }
       );
     }
+
+    sendTicketConfirmationEmailAsync(participant.id);
 
     return NextResponse.json(
       {

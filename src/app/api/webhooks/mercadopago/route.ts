@@ -30,6 +30,7 @@ import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getPaymentClient } from "@/lib/mercadopago";
+import { sendTicketConfirmationEmailAsync } from "@/lib/email/ticket-confirmation";
 import type { TransactionStatus, ParticipantStatus } from "@prisma/client";
 
 // ---------------------------------------------------------------------------
@@ -485,6 +486,10 @@ export async function POST(request: Request) {
       (result.skipped ? ` SKIPPED(${result.reason})` : "");
 
     console.info(logMsg);
+
+    if (txStatus === "APPROVED" && !result.skipped) {
+      sendTicketConfirmationEmailAsync(participantId);
+    }
 
     return NextResponse.json({
       received: true,

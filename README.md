@@ -50,6 +50,7 @@ Acesse [http://localhost:3000](http://localhost:3000).
 5. Use `AUTH_SECRET` forte e credenciais MP de produção
 6. Crie uma aplicação **Marketplace** no painel MP e configure a Redirect URL: `{NEXT_PUBLIC_APP_URL}/api/mercadopago/callback`
 7. Organizadores conectam a conta MP em `/dashboard` antes de vender ingressos pagos
+8. Configure **Resend** (`RESEND_API_KEY`, `EMAIL_FROM`) para envio automático de ingressos por e-mail
 
 ## Estrutura principal
 

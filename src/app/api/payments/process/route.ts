@@ -16,6 +16,7 @@ import {
 import { getMercadoPagoErrorMessage } from "@/lib/mercadopago-errors";
 import { ensureOrganizerAccessToken } from "@/lib/mercadopago-oauth";
 import { getAppBaseUrl } from "@/lib/app-url";
+import { sendTicketConfirmationEmailAsync } from "@/lib/email/ticket-confirmation";
 
 const processPaymentSchema = z.object({
   participantId: z.string().cuid(),
@@ -172,6 +173,8 @@ export async function POST(request: Request) {
           data: { status: "CONFIRMED" },
         }),
       ]);
+
+      sendTicketConfirmationEmailAsync(participantId);
     } else if (mpStatus === "pending" || mpStatus === "in_process") {
       await prisma.transaction.update({
         where: { id: participant.transaction.id },
