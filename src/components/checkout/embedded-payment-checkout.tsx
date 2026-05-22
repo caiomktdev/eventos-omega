@@ -10,6 +10,8 @@ import { useRouter } from "next/navigation";
 import { initMercadoPago, Payment, StatusScreen } from "@mercadopago/sdk-react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
+import { PixPaymentDisplay } from "@/components/checkout/pix-payment-display";
+
 interface EmbeddedPaymentCheckoutProps {
   participantId: string;
   amount: number;
@@ -17,6 +19,22 @@ interface EmbeddedPaymentCheckoutProps {
   initialPreferenceId?: string | null;
   /** Pagamento PIX pendente já criado — exibe QR ao reabrir checkout */
   initialPaymentId?: string | null;
+}
+
+interface PixData {
+  qr_code: string | null;
+  qr_code_base64: string | null;
+  ticket_url: string | null;
+}
+
+interface ProcessPaymentResponse {
+  id?: number | string;
+  status?: string;
+  status_detail?: string;
+  payment_method_id?: string;
+  error?: string;
+  detail?: string;
+  pix?: PixData | null;
 }
 
 let mpInitialized = false;
@@ -30,6 +48,15 @@ function ensureMercadoPagoInit() {
     initMercadoPago(publicKey);
     mpInitialized = true;
   }
+}
+
+function isPixPending(data: ProcessPaymentResponse): boolean {
+  return (
+    data.status === "pending" ||
+    data.status === "in_process" ||
+    data.payment_method_id === "pix" ||
+    data.status_detail === "pending_waiting_transfer"
+  );
 }
 
 export function EmbeddedPaymentCheckout({
@@ -46,8 +73,10 @@ export function EmbeddedPaymentCheckout({
   const [statusPaymentId, setStatusPaymentId] = useState<string | null>(
     initialPaymentId ?? null
   );
+  const [pixData, setPixData] = useState<PixData | null>(null);
   const [loading, setLoading] = useState(!initialPreferenceId && !initialPaymentId);
   const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -125,9 +154,19 @@ export function EmbeddedPaymentCheckout({
   if (!preferenceId && !statusPaymentId) return null;
 
   if (statusPaymentId) {
+    if (pixData?.qr_code || pixData?.qr_code_base64) {
+      return (
+        <PixPaymentDisplay
+          qrCode={pixData.qr_code}
+          qrCodeBase64={pixData.qr_code_base64}
+          ticketUrl={pixData.ticket_url}
+        />
+      );
+    }
+
     return (
       <div className="space-y-3">
-        <p className="text-sm text-muted-foreground text-center">
+        <p className="text-center text-sm text-muted-foreground">
           Escaneie o QR Code ou copie o código PIX abaixo para concluir o pagamento.
         </p>
         <StatusScreen
@@ -162,6 +201,13 @@ export function EmbeddedPaymentCheckout({
         código copia e cola aparecerão nesta página.
       </p>
 
+      {submitError && (
+        <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{submitError}</span>
+        </div>
+      )}
+
       {!ready && (
         <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
@@ -174,7 +220,7 @@ export function EmbeddedPaymentCheckout({
           amount,
           preferenceId,
           marketplace: true,
-          payer: { email: payerEmail },
+          payer: payerEmail ? { email: payerEmail } : undefined,
         }}
         customization={{
           paymentMethods: {
@@ -194,37 +240,63 @@ export function EmbeddedPaymentCheckout({
           );
         }}
         onSubmit={async ({ formData }) => {
-          const res = await fetch("/api/payments/process", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ participantId, formData }),
-          });
+          setSubmitError(null);
+          let failureMessage: string | null = null;
 
-          const data = await res.json();
+          try {
+            const res = await fetch("/api/payments/process", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ participantId, formData }),
+            });
 
-          if (!res.ok) {
-            throw new Error(data.error ?? "Pagamento recusado.");
+            const data = (await res.json()) as ProcessPaymentResponse;
+
+            if (!res.ok) {
+              failureMessage =
+                data.error ??
+                data.detail ??
+                "Não foi possível processar o pagamento.";
+              throw new Error(failureMessage);
+            }
+
+            if (!data.id) {
+              failureMessage =
+                "Pagamento criado sem identificador. Tente novamente.";
+              throw new Error(failureMessage);
+            }
+
+            const paymentId = String(data.id);
+
+            if (data.status === "approved") {
+              router.push(
+                `/payment/success?payment_id=${paymentId}&external_reference=${participantId}`
+              );
+              return;
+            }
+
+            if (isPixPending(data)) {
+              setPixData(data.pix ?? null);
+              setStatusPaymentId(paymentId);
+              return;
+            }
+
+            failureMessage =
+              data.status_detail === "cc_rejected_other_reason"
+                ? "Pagamento recusado. Verifique os dados ou tente outro meio."
+                : "Pagamento não aprovado. Tente outro meio de pagamento.";
+            throw new Error(failureMessage);
+          } catch (err) {
+            if (!failureMessage && err instanceof Error) {
+              failureMessage = err.message;
+            }
+            if (failureMessage) {
+              setSubmitError(failureMessage);
+            }
+            throw err instanceof Error
+              ? err
+              : new Error(failureMessage ?? "Erro ao processar pagamento.");
           }
-
-          const paymentId = String(data.id);
-
-          if (data.status === "approved") {
-            router.push(
-              `/payment/success?payment_id=${paymentId}&external_reference=${participantId}`
-            );
-            return;
-          }
-
-          if (
-            data.status === "pending" ||
-            data.status === "in_process" ||
-            data.payment_method_id === "pix"
-          ) {
-            setStatusPaymentId(paymentId);
-            return;
-          }
-
-          throw new Error("Pagamento não aprovado. Tente outro meio de pagamento.");
         }}
       />
     </div>

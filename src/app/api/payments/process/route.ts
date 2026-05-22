@@ -2,7 +2,7 @@
  * POST /api/payments/process
  *
  * Processa pagamento do Payment Brick (Checkout embarcado).
- * Usa token OAuth do organizador + application_fee (split Moove 2%).
+ * Usa token OAuth do organizador + application_fee (split Moove).
  */
 
 import { NextResponse } from "next/server";
@@ -13,6 +13,7 @@ import {
   buildIdempotencyKey,
   getPaymentClientForToken,
 } from "@/lib/mercadopago";
+import { getMercadoPagoErrorMessage } from "@/lib/mercadopago-errors";
 import { ensureOrganizerAccessToken } from "@/lib/mercadopago-oauth";
 import { getAppBaseUrl } from "@/lib/app-url";
 
@@ -20,6 +21,13 @@ const processPaymentSchema = z.object({
   participantId: z.string().cuid(),
   formData: z.record(z.unknown()),
 });
+
+type BrickPayer = {
+  email?: string;
+  identification?: { type?: string; number?: string };
+  first_name?: string;
+  last_name?: string;
+};
 
 export async function POST(request: Request) {
   try {
@@ -43,6 +51,7 @@ export async function POST(request: Request) {
             status: true,
             grossValue: true,
             mooveFee: true,
+            mercadoPagoPaymentId: true,
           },
         },
       },
@@ -57,6 +66,7 @@ export async function POST(request: Request) {
 
     if (participant.transaction.status === "APPROVED") {
       return NextResponse.json({
+        id: participant.transaction.mercadoPagoPaymentId,
         status: "approved",
         alreadyPaid: true,
       });
@@ -81,19 +91,27 @@ export async function POST(request: Request) {
     const mooveFee = Number(participant.transaction.mooveFee);
     const baseUrl = getAppBaseUrl();
     const webhookUrl = `${baseUrl}/api/webhooks/mercadopago?source_news=webhooks`;
+    const description = `${participant.ticketType.name} — ${participant.event.title}`;
 
-    const payer = formData.payer as
-      | {
-          email?: string;
-          identification?: { type?: string; number?: string };
-          first_name?: string;
-          last_name?: string;
-        }
-      | undefined;
+    const enrollmentForm = participant.formData as Record<string, string> | null;
+    const enrollmentEmail = enrollmentForm?.email?.trim().toLowerCase();
+
+    const brickPayer = (formData.payer as BrickPayer | undefined) ?? {};
+    const payer: BrickPayer = {
+      ...brickPayer,
+      email: brickPayer.email?.trim() || enrollmentEmail || undefined,
+    };
+
+    if (!payer.email) {
+      return NextResponse.json(
+        { error: "Informe um e-mail válido para continuar com o pagamento." },
+        { status: 422 }
+      );
+    }
 
     const paymentBody: Record<string, unknown> = {
       transaction_amount: grossValue,
-      description: `${participant.ticketType.name} — ${participant.event.title}`,
+      description,
       external_reference: participantId,
       application_fee: mooveFee,
       notification_url: webhookUrl,
@@ -102,6 +120,7 @@ export async function POST(request: Request) {
         gross_value: grossValue,
         moove_fee: mooveFee,
       },
+      payer,
     };
 
     if (formData.token) {
@@ -116,8 +135,11 @@ export async function POST(request: Request) {
     if (formData.issuer_id != null) {
       paymentBody.issuer_id = formData.issuer_id;
     }
-    if (payer) {
-      paymentBody.payer = payer;
+    if (formData.additional_info) {
+      paymentBody.additional_info = formData.additional_info;
+    }
+    if (formData.transaction_details) {
+      paymentBody.transaction_details = formData.transaction_details;
     }
 
     const paymentClient = getPaymentClientForToken(organizerMp.accessToken);
@@ -187,18 +209,12 @@ export async function POST(request: Request) {
       );
     }
 
-    if (err instanceof Error) {
-      console.error("[POST /api/payments/process]", err.message);
-      return NextResponse.json(
-        { error: "Erro ao processar pagamento.", detail: err.message },
-        { status: 502 }
-      );
-    }
+    const message = getMercadoPagoErrorMessage(err);
+    console.error("[POST /api/payments/process]", message, err);
 
-    console.error("[POST /api/payments/process] Erro inesperado:", err);
     return NextResponse.json(
-      { error: "Erro interno do servidor." },
-      { status: 500 }
+      { error: message, detail: message },
+      { status: 502 }
     );
   }
 }
