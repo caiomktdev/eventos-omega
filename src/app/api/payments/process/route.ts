@@ -166,6 +166,18 @@ export async function POST(request: Request) {
       status: mpStatus,
       status_detail: payment.status_detail,
       payment_method_id: payment.payment_method_id,
+      pix:
+        payment.payment_method_id === "pix"
+          ? {
+              qr_code:
+                payment.point_of_interaction?.transaction_data?.qr_code ?? null,
+              qr_code_base64:
+                payment.point_of_interaction?.transaction_data?.qr_code_base64 ??
+                null,
+              ticket_url:
+                payment.point_of_interaction?.transaction_data?.ticket_url ?? null,
+            }
+          : null,
     });
   } catch (err) {
     if (err instanceof ZodError) {

@@ -79,6 +79,8 @@ async function getCheckoutData(participantId: string) {
           organizerNetValue: true,
           paidAt: true,
           mercadoPagoPreferenceId: true,
+          mercadoPagoPaymentId: true,
+          paymentMethod: true,
         },
       },
     },
@@ -330,6 +332,13 @@ export default async function CheckoutRetryPage({ params }: PageProps) {
                     amount={Number(transaction.grossValue)}
                     payerEmail={payerEmail}
                     initialPreferenceId={transaction.mercadoPagoPreferenceId}
+                    initialPaymentId={
+                      transaction.mercadoPagoPaymentId &&
+                      (transaction.status === "PENDING" ||
+                        transaction.status === "IN_PROCESS")
+                        ? transaction.mercadoPagoPaymentId
+                        : null
+                    }
                   />
                 )}
 

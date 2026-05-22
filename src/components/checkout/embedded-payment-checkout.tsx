@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { initMercadoPago, Payment } from "@mercadopago/sdk-react";
+import { initMercadoPago, Payment, StatusScreen } from "@mercadopago/sdk-react";
 import { AlertCircle, Loader2 } from "lucide-react";
 
 interface EmbeddedPaymentCheckoutProps {
@@ -15,6 +15,8 @@ interface EmbeddedPaymentCheckoutProps {
   amount: number;
   payerEmail: string;
   initialPreferenceId?: string | null;
+  /** Pagamento PIX pendente já criado — exibe QR ao reabrir checkout */
+  initialPaymentId?: string | null;
 }
 
 let mpInitialized = false;
@@ -35,12 +37,16 @@ export function EmbeddedPaymentCheckout({
   amount,
   payerEmail,
   initialPreferenceId,
+  initialPaymentId,
 }: EmbeddedPaymentCheckoutProps) {
   const router = useRouter();
   const [preferenceId, setPreferenceId] = useState<string | null>(
     initialPreferenceId ?? null
   );
-  const [loading, setLoading] = useState(!initialPreferenceId);
+  const [statusPaymentId, setStatusPaymentId] = useState<string | null>(
+    initialPaymentId ?? null
+  );
+  const [loading, setLoading] = useState(!initialPreferenceId && !initialPaymentId);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -56,7 +62,7 @@ export function EmbeddedPaymentCheckout({
   }, []);
 
   useEffect(() => {
-    if (preferenceId) return;
+    if (preferenceId || statusPaymentId) return;
 
     let cancelled = false;
 
@@ -96,7 +102,7 @@ export function EmbeddedPaymentCheckout({
     return () => {
       cancelled = true;
     };
-  }, [participantId, preferenceId]);
+  }, [participantId, preferenceId, statusPaymentId]);
 
   if (loading) {
     return (
@@ -116,10 +122,46 @@ export function EmbeddedPaymentCheckout({
     );
   }
 
+  if (!preferenceId && !statusPaymentId) return null;
+
+  if (statusPaymentId) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground text-center">
+          Escaneie o QR Code ou copie o código PIX abaixo para concluir o pagamento.
+        </p>
+        <StatusScreen
+          initialization={{ paymentId: statusPaymentId }}
+          customization={{
+            visual: {
+              hidePixQrCode: false,
+            },
+            backUrls: {
+              return: `/payment/success?payment_id=${statusPaymentId}&external_reference=${participantId}`,
+            },
+          }}
+          locale="pt-BR"
+          onError={(err) => {
+            console.error("[StatusScreen Brick]", err);
+            setError(
+              "Não foi possível exibir o QR Code PIX. Tente recarregar a página."
+            );
+            setStatusPaymentId(null);
+          }}
+        />
+      </div>
+    );
+  }
+
   if (!preferenceId) return null;
 
   return (
     <div className="space-y-3">
+      <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+        No PIX: informe o e-mail e clique em pagar. Em seguida, o QR Code e o
+        código copia e cola aparecerão nesta página.
+      </p>
+
       {!ready && (
         <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
           <Loader2 className="h-5 w-5 animate-spin" />
@@ -143,6 +185,7 @@ export function EmbeddedPaymentCheckout({
             mercadoPago: "all",
           },
         }}
+        locale="pt-BR"
         onReady={() => setReady(true)}
         onError={(err) => {
           console.error("[Payment Brick]", err);
@@ -163,17 +206,21 @@ export function EmbeddedPaymentCheckout({
             throw new Error(data.error ?? "Pagamento recusado.");
           }
 
+          const paymentId = String(data.id);
+
           if (data.status === "approved") {
             router.push(
-              `/payment/success?payment_id=${data.id}&external_reference=${participantId}`
+              `/payment/success?payment_id=${paymentId}&external_reference=${participantId}`
             );
             return;
           }
 
-          if (data.status === "pending" || data.status === "in_process") {
-            router.push(
-              `/payment/success?payment_id=${data.id}&status=${data.status}&external_reference=${participantId}`
-            );
+          if (
+            data.status === "pending" ||
+            data.status === "in_process" ||
+            data.payment_method_id === "pix"
+          ) {
+            setStatusPaymentId(paymentId);
             return;
           }
 
