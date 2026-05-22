@@ -251,19 +251,19 @@ export function DynamicEventForm({
         }
 
         if (data.requiresPayment) {
-          if (data.redirectTo) {
-            window.location.assign(data.redirectTo);
-            return;
+          const checkoutPath =
+            data.checkoutUrl ??
+            data.redirectTo ??
+            (data.participantId ? `/checkout/${data.participantId}` : null);
+
+          if (!checkoutPath) {
+            throw new Error(
+              data.paymentError ?? "Não foi possível iniciar o pagamento."
+            );
           }
 
-          if (data.checkoutUrl) {
-            window.location.assign(data.checkoutUrl);
-            return;
-          }
-
-          throw new Error(
-            data.paymentError ?? "Não foi possível iniciar o pagamento."
-          );
+          window.location.assign(checkoutPath);
+          return;
         }
 
         setSuccessData({ ordemCompra: data.ordemCompra, isFree: true });

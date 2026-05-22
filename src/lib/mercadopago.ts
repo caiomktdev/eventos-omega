@@ -58,6 +58,15 @@ export function getPaymentClient(): Payment {
   return new Payment(getMpClient());
 }
 
+/** Payment client com token OAuth do organizador (Checkout Bricks / split). */
+export function getPaymentClientForToken(accessToken: string): Payment {
+  const config = new MercadoPagoConfig({
+    accessToken,
+    options: { timeout: 8000 },
+  });
+  return new Payment(config);
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

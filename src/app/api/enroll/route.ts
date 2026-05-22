@@ -214,14 +214,15 @@ export async function POST(request: Request) {
       });
 
       if (checkoutRes.ok) {
-        const { initPoint } = await checkoutRes.json();
+        const { checkoutUrl } = await checkoutRes.json();
         return NextResponse.json(
           {
             participantId: participant.id,
             ordemCompra: participant.ordemCompra,
             status: participant.status,
             requiresPayment: true,
-            redirectTo: initPoint,
+            redirectTo: checkoutUrl ?? `/checkout/${participant.id}`,
+            checkoutUrl: checkoutUrl ?? `/checkout/${participant.id}`,
           },
           { status: 201 }
         );

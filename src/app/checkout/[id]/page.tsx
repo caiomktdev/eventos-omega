@@ -36,7 +36,7 @@ import { formatCurrency } from "@/lib/fee";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { RetryPaymentButton } from "@/components/checkout/retry-payment-button";
+import { EmbeddedPaymentCheckout } from "@/components/checkout/embedded-payment-checkout";
 import { EventCoverImage } from "@/components/events/event-cover-image";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -78,6 +78,7 @@ async function getCheckoutData(participantId: string) {
           mooveFee: true,
           organizerNetValue: true,
           paidAt: true,
+          mercadoPagoPreferenceId: true,
         },
       },
     },
@@ -132,6 +133,7 @@ export default async function CheckoutRetryPage({ params }: PageProps) {
   // Nome do participante (campo nome no formData)
   const formData = data.formData as Record<string, string> | null;
   const participantName = formData?.nome ?? formData?.name ?? "Participante";
+  const payerEmail = formData?.email ?? "";
 
   const { label: statusLabel, variant: statusVariant } = txStatusLabel(txStatus);
 
@@ -320,9 +322,20 @@ export default async function CheckoutRetryPage({ params }: PageProps) {
                   </div>
                 )}
 
-                {/* Botão de retry — Client Component */}
-                {canRetry && (
-                  <RetryPaymentButton participantId={data.id} />
+                {/* Checkout embarcado — Payment Brick */}
+                {canRetry && transaction && Number(transaction.grossValue) > 0 && (
+                  <EmbeddedPaymentCheckout
+                    participantId={data.id}
+                    amount={Number(transaction.grossValue)}
+                    payerEmail={payerEmail}
+                    initialPreferenceId={transaction.mercadoPagoPreferenceId}
+                  />
+                )}
+
+                {canRetry && (!transaction || Number(transaction.grossValue) === 0) && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Não há valor pendente para este ingresso.
+                  </p>
                 )}
 
                 {!canRetry && (

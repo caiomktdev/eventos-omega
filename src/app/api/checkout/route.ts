@@ -13,7 +13,7 @@
  *
  * O cliente NUNCA envia valores monetários — tudo é derivado do banco.
  *
- * Retorna: { preferenceId, initPoint, participantId }
+ * Retorna: { preferenceId, checkoutUrl, participantId }
  */
 
 import { NextResponse } from "next/server";
@@ -26,6 +26,7 @@ import {
   buildIdempotencyKey,
 } from "@/lib/mercadopago";
 import { ensureOrganizerAccessToken } from "@/lib/mercadopago-oauth";
+import { getAppBaseUrl } from "@/lib/app-url";
 import { calculateMooveFee } from "@/lib/fee";
 
 // ---------------------------------------------------------------------------
@@ -131,15 +132,9 @@ export async function POST(request: Request) {
 
     // Se já tiver uma preferência ativa (idempotência), retorna sem recriar
     if (tx.mercadoPagoPreferenceId && tx.status === "PENDING") {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-      const checkoutUrl =
-        process.env.NODE_ENV === "production"
-          ? `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${tx.mercadoPagoPreferenceId}`
-          : `https://sandbox.mercadopago.com.br/checkout/v1/redirect?pref_id=${tx.mercadoPagoPreferenceId}`;
-
       return NextResponse.json({
         preferenceId: tx.mercadoPagoPreferenceId,
-        initPoint: checkoutUrl,
+        checkoutUrl: `/checkout/${participantId}`,
         participantId,
         reused: true,
       });
@@ -190,7 +185,11 @@ export async function POST(request: Request) {
     // 6. Monta a Preference do Mercado Pago
     //    unit_price vem de grossValue — calculado aqui, nunca do cliente
     // -----------------------------------------------------------------------
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const baseUrl = getAppBaseUrl();
+    const webhookUrl = `${baseUrl}/api/webhooks/mercadopago?source_news=webhooks`;
+
+    const formData = participant.formData as Record<string, string> | null;
+    const payerEmail = formData?.email?.trim().toLowerCase();
 
     const preferenceBody = {
       items: [
@@ -199,21 +198,18 @@ export async function POST(request: Request) {
           title: `${participant.ticketType.name} — ${participant.event.title}`,
           description: `Inscrição #${participant.ordemCompra} • ${participant.event.title}`,
           quantity: 1,
-          unit_price: Number(grossValue),   // bruto — o MP coleta do comprador
+          unit_price: Number(grossValue),
           currency_id: "BRL",
         },
       ],
-      payer: {
-        // Email pré-preenchido não é populado aqui pois exigiria dados do User
-        // mas pode ser adicionado com: email: participant.user.email
-      },
+      payer: payerEmail ? { email: payerEmail } : {},
       back_urls: {
         success: `${baseUrl}/payment/success`,
         failure: `${baseUrl}/payment/failure`,
         pending: `${baseUrl}/payment/success`,
       },
       auto_return: "approved" as const,
-      // external_reference identifica o Participant — usado no webhook
+      notification_url: webhookUrl,
       external_reference: participantId,
       statement_descriptor: "EVENTOSOMEGA",
       marketplace_fee: Number(mooveFee),
@@ -244,7 +240,7 @@ export async function POST(request: Request) {
       requestOptions: { idempotencyKey },
     });
 
-    if (!preference.id || !preference.init_point) {
+    if (!preference.id) {
       throw new Error("Mercado Pago retornou uma preferência inválida.");
     }
 
@@ -259,7 +255,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         preferenceId: preference.id,
-        initPoint: preference.init_point,
+        checkoutUrl: `/checkout/${participantId}`,
         participantId,
         financial: {
           grossValue: Number(grossValue),
