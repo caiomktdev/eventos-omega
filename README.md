@@ -60,6 +60,8 @@ Acesse [http://localhost:3000](http://localhost:3000).
 - `/dashboard` — painel do organizador
 - `/admin` — painel administrativo
 
+**Documentação técnica completa:** [`docs/CONTEXTO-TECNICO.md`](docs/CONTEXTO-TECNICO.md) (auditoria, arquitetura, plano de sprints, checklist production-ready)
+
 ## Segurança
 
 Rotas `/api/admin/*` exigem autenticação. Organizadores só acessam seus próprios eventos. Patrocinadores globais da home são restritos a administradores.
