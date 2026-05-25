@@ -503,12 +503,14 @@ export async function POST(request: Request) {
       err instanceof Error ? err.message : err
     );
 
-    // Retorna 200 para evitar re-fila infinita
-    // O erro está logado para investigação manual
-    return NextResponse.json({
-      received: true,
-      processed: false,
-      error: "Erro interno ao atualizar banco.",
-    });
+    // Retorna 502 para que o MP reenvie a notificação após falha transitória
+    return NextResponse.json(
+      {
+        received: true,
+        processed: false,
+        error: "Erro interno ao atualizar banco.",
+      },
+      { status: 502 }
+    );
   }
 }

@@ -307,6 +307,8 @@ model Transaction {
 
   paymentMethod String?
   paidAt        DateTime?
+  /// Expiração da reserva de estoque para pagamentos PENDING (TTL 30 min).
+  reservationExpiresAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -314,5 +316,6 @@ model Transaction {
 
   @@index([mercadoPagoPaymentId])
   @@index([status])
+  @@index([status, reservationExpiresAt])
   @@map("transactions")
 }

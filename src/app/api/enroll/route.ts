@@ -20,6 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { enrollSchema } from "@/lib/validations";
 import { calculateMooveFee } from "@/lib/fee";
 import { sendTicketConfirmationEmailAsync } from "@/lib/email/ticket-confirmation";
+import { reservationExpiresAtFromNow } from "@/lib/reservations/constants";
 import { ZodError } from "zod";
 import type { EventFormStructure } from "@/types";
 
@@ -186,6 +187,9 @@ export async function POST(request: Request) {
               // Ingresso gratuito já nasce APPROVED
               status: isFree ? "APPROVED" : "PENDING",
               ...(isFree ? { paidAt: new Date() } : {}),
+              ...(!isFree && {
+                reservationExpiresAt: reservationExpiresAtFromNow(),
+              }),
             },
           },
         },

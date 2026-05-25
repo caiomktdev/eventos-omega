@@ -28,6 +28,10 @@ import {
 import { ensureOrganizerAccessToken } from "@/lib/mercadopago-oauth";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { calculateMooveFee } from "@/lib/fee";
+import {
+  isReservationActive,
+  reservationExpiresAtFromNow,
+} from "@/lib/reservations/constants";
 
 // ---------------------------------------------------------------------------
 // Validação do body
@@ -88,6 +92,7 @@ export async function POST(request: Request) {
             id: true,
             status: true,
             mercadoPagoPreferenceId: true,
+            reservationExpiresAt: true,
           },
         },
       },
@@ -130,13 +135,47 @@ export async function POST(request: Request) {
       );
     }
 
-    // Se já tiver uma preferência ativa (idempotência), retorna sem recriar
-    if (tx.mercadoPagoPreferenceId && tx.status === "PENDING") {
+    // Se já tiver uma preferência ativa dentro do TTL (idempotência), retorna sem recriar
+    if (
+      tx.mercadoPagoPreferenceId &&
+      tx.status === "PENDING" &&
+      isReservationActive(tx.reservationExpiresAt)
+    ) {
       return NextResponse.json({
         preferenceId: tx.mercadoPagoPreferenceId,
         checkoutUrl: `/checkout/${participantId}`,
         participantId,
         reused: true,
+      });
+    }
+
+    const reservationExpired =
+      tx.reservationExpiresAt != null &&
+      !isReservationActive(tx.reservationExpiresAt);
+
+    const needsStockReReservation =
+      participant.status === "CANCELLED" || tx.status === "CANCELLED";
+
+    if (needsStockReReservation) {
+      await prisma.$transaction(async (db) => {
+        const fresh = await db.ticketType.findUniqueOrThrow({
+          where: { id: participant.ticketType.id },
+          select: { soldQuantity: true, totalQuantity: true },
+        });
+
+        if (fresh.soldQuantity >= fresh.totalQuantity) {
+          throw new Error("Ingresso esgotado.");
+        }
+
+        await db.ticketType.update({
+          where: { id: participant.ticketType.id },
+          data: { soldQuantity: { increment: 1 } },
+        });
+
+        await db.participant.update({
+          where: { id: participantId },
+          data: { status: "REGISTERED" },
+        });
       });
     }
 
@@ -178,6 +217,10 @@ export async function POST(request: Request) {
         mooveFee,
         organizerNetValue,
         status: "PENDING",
+        reservationExpiresAt: reservationExpiresAtFromNow(),
+        ...(reservationExpired || needsStockReReservation
+          ? { mercadoPagoPreferenceId: null }
+          : {}),
       },
     });
 
@@ -277,9 +320,10 @@ export async function POST(request: Request) {
     // Erros do SDK do Mercado Pago expõem message estruturada
     if (err instanceof Error) {
       console.error("[POST /api/checkout]", err.message);
+      const status = err.message.includes("esgotado") ? 409 : 502;
       return NextResponse.json(
-        { error: "Erro ao gerar preferência de pagamento.", detail: err.message },
-        { status: 502 }
+        { error: err.message.includes("esgotado") ? err.message : "Erro ao gerar preferência de pagamento.", detail: err.message },
+        { status }
       );
     }
 
