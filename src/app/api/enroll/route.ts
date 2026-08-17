@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     const normalizedEmail = formData.email.trim().toLowerCase();
 
     // --- Busca evento com formStructure e tipo de ingresso ---
-    const event = await prisma.event.findUnique({
+    const event = await prisma.event.findFirst({
       where: { id: eventId, status: "PUBLISHED" },
       select: {
         id: true,
