@@ -5,9 +5,11 @@ import { Navbar } from "@/components/navbar";
 import { SiteFooter } from "@/components/site-footer";
 
 export function SiteChrome({ children }: { children: React.ReactNode }) {
-  const isLogin = usePathname() === "/admin/login";
+  const pathname = usePathname();
+  const isAuthPage =
+    pathname === "/admin/login" || pathname === "/login" || pathname === "/cadastro";
 
-  if (isLogin) {
+  if (isAuthPage) {
     return (
       <div className="flex min-h-dvh flex-col bg-gray-50">
         <Navbar />

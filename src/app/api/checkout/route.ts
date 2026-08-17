@@ -5,7 +5,7 @@
  *
  *  1. Busca o preço real do ingresso no banco (fonte da verdade)
  *  2. Recalcula ESTRITAMENTE no servidor:
- *       mooveFee         = grossValue * 0.02   (2% — imutável)
+ *       mooveFee         = grossValue * 0.055  (5,5% — imutável)
  *       organizerNetValue = grossValue - mooveFee
  *  3. Persiste esses três valores na Transaction com status PENDING
  *  4. Cria uma Preference no Mercado Pago com chave de idempotência
@@ -32,12 +32,16 @@ import {
   isReservationActive,
   reservationExpiresAtFromNow,
 } from "@/lib/reservations/constants";
+import { verifyCheckoutAccessToken } from "@/lib/checkout-access";
+import { getClientIp } from "@/lib/request-ip";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 // ---------------------------------------------------------------------------
 // Validação do body
 // ---------------------------------------------------------------------------
 const checkoutBodySchema = z.object({
   participantId: z.string().cuid("participantId deve ser um CUID válido."),
+  accessToken: z.string().min(32, "Token de acesso inválido."),
 });
 
 // ---------------------------------------------------------------------------
@@ -64,8 +68,19 @@ function toDecimalFees(grossValueDecimal: Decimal): {
 // ---------------------------------------------------------------------------
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request);
+    const rateLimit = await checkRateLimit({
+      scope: "api:checkout",
+      key: ip,
+      limit: 30,
+      windowMs: 60_000,
+    });
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterSec);
+    }
+
     const body = await request.json();
-    const { participantId } = checkoutBodySchema.parse(body);
+    const { participantId, accessToken } = checkoutBodySchema.parse(body);
 
     // -----------------------------------------------------------------------
     // 1. Busca o Participant com todos os dados necessários
@@ -112,6 +127,27 @@ export async function POST(request: Request) {
       );
     }
 
+    const participantFormData =
+      participant.formData as Record<string, string | number | boolean> | null;
+    const participantEmail =
+      typeof participantFormData?.email === "string"
+        ? participantFormData.email.trim().toLowerCase()
+        : null;
+
+    if (
+      !participantEmail ||
+      !verifyCheckoutAccessToken({
+        participantId,
+        email: participantEmail,
+        token: accessToken,
+      })
+    ) {
+      return NextResponse.json(
+        { error: "Acesso ao checkout não autorizado para esta inscrição." },
+        { status: 403 }
+      );
+    }
+
     if (Number(participant.ticketType.price) === 0) {
       return NextResponse.json(
         { error: "Ingresso gratuito não requer checkout de pagamento." },
@@ -143,7 +179,7 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json({
         preferenceId: tx.mercadoPagoPreferenceId,
-        checkoutUrl: `/checkout/${participantId}`,
+        checkoutUrl: `/checkout/${participantId}?k=${accessToken}`,
         participantId,
         reused: true,
       });
@@ -182,7 +218,7 @@ export async function POST(request: Request) {
     // -----------------------------------------------------------------------
     // 3. Recálculo ESTRITO dos valores financeiros a partir do preço do banco.
     //    O cliente nunca envia valores — o preço vem do TicketType.price.
-    //    Taxa de 2% aplicada via calculateMooveFee (src/lib/fee.ts — fonte única).
+    //    Taxa de 5,5% aplicada via calculateMooveFee (src/lib/fee.ts — fonte única).
     // -----------------------------------------------------------------------
     const { grossValue, mooveFee, organizerNetValue, feeRateApplied } =
       toDecimalFees(participant.ticketType.price);
@@ -298,7 +334,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         preferenceId: preference.id,
-        checkoutUrl: `/checkout/${participantId}`,
+        checkoutUrl: `/checkout/${participantId}?k=${accessToken}`,
         participantId,
         financial: {
           grossValue: Number(grossValue),

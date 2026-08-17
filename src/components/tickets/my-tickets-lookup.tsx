@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Loader2, Mail, Search, Ticket } from "lucide-react";
+import { CheckCircle2, Loader2, Mail, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -22,44 +23,95 @@ interface TicketRow {
   ticketName: string;
   price: number;
   grossValue: number;
-  checkoutUrl: string | null;
 }
 
 export function MyTicketsLookup() {
+  const searchParams = useSearchParams();
+  const accessToken = useMemo(() => searchParams.get("t"), [searchParams]);
+
   const [email, setEmail] = useState("");
   const [tickets, setTickets] = useState<TicketRow[]>([]);
-  const [searched, setSearched] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [requestedLink, setRequestedLink] = useState(false);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+  const [loadingRequest, setLoadingRequest] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [requestMessage, setRequestMessage] = useState<string | null>(null);
 
-  async function handleSearch(e: React.FormEvent) {
+  async function handleRequestLink(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
+    setLoadingRequest(true);
     setError(null);
-    setSearched(false);
+    setRequestedLink(false);
+    setRequestMessage(null);
 
     try {
-      const res = await fetch(
-        `/api/my-tickets?email=${encodeURIComponent(email.trim())}`
-      );
+      const res = await fetch("/api/my-tickets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error ?? "Não foi possível buscar seus ingressos.");
+        throw new Error(data.error ?? "Não foi possível solicitar o link.");
       }
-      setTickets(data.tickets ?? []);
-      setSearched(true);
+
+      setRequestedLink(true);
+      setRequestMessage(
+        data.message ??
+          "Se houver ingressos para este e-mail, enviamos um link de acesso."
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro desconhecido.");
-      setTickets([]);
-      setSearched(true);
     } finally {
-      setLoading(false);
+      setLoadingRequest(false);
     }
   }
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchTicketsByToken(token: string) {
+      setLoadingTickets(true);
+      setError(null);
+      try {
+        const res = await fetch(
+          `/api/my-tickets?token=${encodeURIComponent(token)}`
+        );
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(
+            data.error ??
+              "Não foi possível carregar seus ingressos com este link."
+          );
+        }
+        if (!cancelled) {
+          setTickets(data.tickets ?? []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Erro desconhecido.");
+          setTickets([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingTickets(false);
+      }
+    }
+
+    if (accessToken) {
+      void fetchTicketsByToken(accessToken);
+    } else {
+      setTickets([]);
+      setLoadingTickets(false);
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
   return (
     <div className="space-y-8">
-      <form onSubmit={handleSearch} className="mx-auto max-w-md space-y-4">
+      <form onSubmit={handleRequestLink} className="mx-auto max-w-md space-y-4">
         <div className="space-y-2">
           <label htmlFor="email" className="text-sm font-medium">
             E-mail usado na inscrição
@@ -74,25 +126,39 @@ export function MyTicketsLookup() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="pl-9"
+              disabled={loadingRequest}
             />
           </div>
         </div>
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? (
+        <Button type="submit" className="w-full" disabled={loadingRequest}>
+          {loadingRequest ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Search className="h-4 w-4" />
           )}
-          Buscar ingressos
+          Enviar link de acesso
         </Button>
+        {requestedLink && requestMessage && (
+          <p className="text-sm text-center text-emerald-700 flex items-center justify-center gap-2">
+            <CheckCircle2 className="h-4 w-4" />
+            {requestMessage}
+          </p>
+        )}
         {error && (
           <p className="text-sm text-destructive text-center">{error}</p>
         )}
       </form>
 
-      {searched && tickets.length === 0 && !error && (
+      {loadingTickets && (
+        <div className="flex items-center justify-center gap-2 rounded-xl border px-6 py-8 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Carregando seus ingressos...
+        </div>
+      )}
+
+      {accessToken && !loadingTickets && tickets.length === 0 && !error && (
         <div className="rounded-xl border border-dashed px-6 py-12 text-center text-muted-foreground">
-          Nenhuma inscrição encontrada para este e-mail.
+          Nenhuma inscrição ativa encontrada para este acesso.
         </div>
       )}
 
@@ -132,12 +198,10 @@ export function MyTicketsLookup() {
                 <Button asChild variant="outline" size="sm">
                   <Link href={`/event/${ticket.eventSlug}`}>Ver evento</Link>
                 </Button>
-                {ticket.checkoutUrl && (
-                  <Button asChild size="sm">
-                    <Link href={ticket.checkoutUrl}>Concluir pagamento</Link>
-                  </Button>
-                )}
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Por segurança, links de pagamento e ingresso digital são enviados apenas por e-mail.
+              </p>
             </article>
           ))}
         </div>

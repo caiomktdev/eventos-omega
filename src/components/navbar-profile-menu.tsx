@@ -16,6 +16,9 @@ import {
   Ticket,
   Loader2,
   Handshake,
+  UserPlus,
+  Shield,
+  Compass,
 } from "lucide-react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -143,6 +146,18 @@ export function NavbarProfileMenu() {
                 </Link>
               </DropdownMenu.Item>
 
+              {user.role === "BUYER" && (
+                <DropdownMenu.Item asChild>
+                  <Link
+                    href="/"
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-accent"
+                  >
+                    <Compass className="h-4 w-4" />
+                    Ver eventos
+                  </Link>
+                </DropdownMenu.Item>
+              )}
+
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
 
               <DropdownMenu.Item
@@ -157,29 +172,29 @@ export function NavbarProfileMenu() {
             <>
               <DropdownMenu.Item asChild>
                 <Link
-                  href="/admin/login"
+                  href="/login"
                   className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-accent"
                 >
                   <LogIn className="h-4 w-4" />
-                  Entrar
+                  Entrar como usuário
                 </Link>
               </DropdownMenu.Item>
               <DropdownMenu.Item asChild>
                 <Link
-                  href="/dashboard/events/new"
+                  href="/cadastro"
                   className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-accent"
                 >
-                  <PlusCircle className="h-4 w-4" />
-                  Criar evento
+                  <UserPlus className="h-4 w-4" />
+                  Criar conta
                 </Link>
               </DropdownMenu.Item>
               <DropdownMenu.Item asChild>
                 <Link
-                  href="/dashboard"
+                  href="/admin/login"
                   className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none hover:bg-accent"
                 >
-                  <CalendarDays className="h-4 w-4" />
-                  Meus eventos
+                  <Shield className="h-4 w-4" />
+                  Entrar na área administrativa
                 </Link>
               </DropdownMenu.Item>
               <DropdownMenu.Item asChild>

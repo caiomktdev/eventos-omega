@@ -38,6 +38,7 @@ function buildTicketConfirmationHtml(data: {
   isFree: boolean;
   myTicketsUrl: string;
   eventUrl: string;
+  ticketUrl: string;
 }): string {
   const orderLabel = `#${String(data.ordemCompra).padStart(5, "0")}`;
   const priceLine = data.isFree
@@ -91,10 +92,14 @@ function buildTicketConfirmationHtml(data: {
               <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom:12px;">
                 <tr>
                   <td style="border-radius:8px;background:#2563eb;">
-                    <a href="${escapeHtml(data.myTicketsUrl)}" style="display:inline-block;padding:12px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">Ver meus ingressos</a>
+                    <a href="${escapeHtml(data.ticketUrl)}" style="display:inline-block;padding:12px 20px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">Abrir ingresso digital</a>
                   </td>
                 </tr>
               </table>
+              <p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#52525b;">
+                Se preferir, também é possível consultar todos os pedidos em
+                <a href="${escapeHtml(data.myTicketsUrl)}" style="color:#2563eb;text-decoration:none;"> Meus ingressos</a>.
+              </p>
               <p style="margin:0;font-size:13px;line-height:1.6;">
                 <a href="${escapeHtml(data.eventUrl)}" style="color:#2563eb;text-decoration:none;">Ver página do evento</a>
               </p>
@@ -136,6 +141,7 @@ export async function sendTicketConfirmationEmail(
     select: {
       id: true,
       ordemCompra: true,
+      checkInToken: true,
       status: true,
       confirmationEmailSentAt: true,
       formData: true,
@@ -198,6 +204,7 @@ export async function sendTicketConfirmationEmail(
     isFree: grossValue === 0,
     myTicketsUrl: `${baseUrl}/meus-ingressos`,
     eventUrl: `${baseUrl}/event/${participant.event.slug}`,
+    ticketUrl: `${baseUrl}/ingresso/${participant.checkInToken}`,
   });
 
   const resend = getResendClient();

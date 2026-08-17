@@ -16,10 +16,14 @@ import {
 import { getMercadoPagoErrorMessage } from "@/lib/mercadopago-errors";
 import { ensureOrganizerAccessToken } from "@/lib/mercadopago-oauth";
 import { getAppBaseUrl } from "@/lib/app-url";
+import { verifyCheckoutAccessToken } from "@/lib/checkout-access";
 import { sendTicketConfirmationEmailAsync } from "@/lib/email/ticket-confirmation";
+import { getClientIp } from "@/lib/request-ip";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 const processPaymentSchema = z.object({
   participantId: z.string().cuid(),
+  accessToken: z.string().min(32),
   formData: z.record(z.unknown()),
 });
 
@@ -32,8 +36,21 @@ type BrickPayer = {
 
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request);
+    const rateLimit = await checkRateLimit({
+      scope: "api:payments:process",
+      key: ip,
+      limit: 25,
+      windowMs: 60_000,
+    });
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterSec);
+    }
+
     const body = await request.json();
-    const { participantId, formData } = processPaymentSchema.parse(body);
+    const { participantId, accessToken, formData } = processPaymentSchema.parse(
+      body
+    );
 
     const participant = await prisma.participant.findUnique({
       where: { id: participantId },
@@ -65,6 +82,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const enrollmentForm = participant.formData as Record<string, string> | null;
+    const enrollmentEmail = enrollmentForm?.email?.trim().toLowerCase();
+    if (
+      !enrollmentEmail ||
+      !verifyCheckoutAccessToken({
+        participantId,
+        email: enrollmentEmail,
+        token: accessToken,
+      })
+    ) {
+      return NextResponse.json(
+        { error: "Acesso ao pagamento não autorizado para esta inscrição." },
+        { status: 403 }
+      );
+    }
+
     if (participant.transaction.status === "APPROVED") {
       return NextResponse.json({
         id: participant.transaction.mercadoPagoPaymentId,
@@ -93,9 +126,6 @@ export async function POST(request: Request) {
     const baseUrl = getAppBaseUrl();
     const webhookUrl = `${baseUrl}/api/webhooks/mercadopago?source_news=webhooks`;
     const description = `${participant.ticketType.name} — ${participant.event.title}`;
-
-    const enrollmentForm = participant.formData as Record<string, string> | null;
-    const enrollmentEmail = enrollmentForm?.email?.trim().toLowerCase();
 
     const brickPayer = (formData.payer as BrickPayer | undefined) ?? {};
     const payer: BrickPayer = {
@@ -158,8 +188,65 @@ export async function POST(request: Request) {
     const mpStatus = payment.status ?? "pending";
 
     if (mpStatus === "approved") {
-      await prisma.$transaction([
-        prisma.transaction.update({
+      const expectedCents = Math.round(
+        Number(participant.transaction.grossValue) * 100
+      );
+      const receivedCents = Math.round(
+        Number(payment.transaction_amount ?? 0) * 100
+      );
+
+      if (expectedCents !== receivedCents) {
+        await prisma.transaction.update({
+          where: { id: participant.transaction.id },
+          data: {
+            status: "IN_MEDIATION",
+            mercadoPagoPaymentId: String(payment.id),
+          },
+        });
+
+        return NextResponse.json(
+          {
+            error:
+              "Valor do pagamento não confere com a inscrição. A transação foi sinalizada para análise.",
+          },
+          { status: 409 }
+        );
+      }
+
+      const approval = await prisma.$transaction(async (tx) => {
+        const currentParticipant = await tx.participant.findUnique({
+          where: { id: participantId },
+          select: { status: true, ticketTypeId: true },
+        });
+
+        if (!currentParticipant) {
+          throw new Error("Inscrição não encontrada para confirmação.");
+        }
+
+        if (currentParticipant.status === "CANCELLED") {
+          const stock = await tx.ticketType.findUniqueOrThrow({
+            where: { id: currentParticipant.ticketTypeId },
+            select: { soldQuantity: true, totalQuantity: true },
+          });
+
+          if (stock.soldQuantity >= stock.totalQuantity) {
+            await tx.transaction.update({
+              where: { id: participant.transaction.id },
+              data: {
+                status: "IN_MEDIATION",
+                mercadoPagoPaymentId: String(payment.id),
+              },
+            });
+            return { approved: false };
+          }
+
+          await tx.ticketType.update({
+            where: { id: currentParticipant.ticketTypeId },
+            data: { soldQuantity: { increment: 1 } },
+          });
+        }
+
+        await tx.transaction.update({
           where: { id: participant.transaction.id },
           data: {
             status: "APPROVED",
@@ -167,12 +254,23 @@ export async function POST(request: Request) {
             paymentMethod: payment.payment_method_id ?? null,
             paidAt: new Date(),
           },
-        }),
-        prisma.participant.update({
+        });
+        await tx.participant.update({
           where: { id: participantId },
           data: { status: "CONFIRMED" },
-        }),
-      ]);
+        });
+        return { approved: true };
+      });
+
+      if (!approval.approved) {
+        return NextResponse.json(
+          {
+            error:
+              "Pagamento aprovado fora da reserva e não há mais vagas disponíveis.",
+          },
+          { status: 409 }
+        );
+      }
 
       sendTicketConfirmationEmailAsync(participantId);
     } else if (mpStatus === "pending" || mpStatus === "in_process") {

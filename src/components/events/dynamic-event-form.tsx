@@ -68,7 +68,7 @@ interface DynamicEventFormProps {
   eventTitle: string;
   formStructure: EventFormStructure;
   ticketTypes: SerializedTicketType[];
-  /** Rótulo da taxa vigente, ex: "2%" — calculado no servidor */
+  /** Rótulo da taxa vigente, ex: "5,5%" — calculado no servidor */
   mooveFeePercentLabel: string;
 }
 
@@ -251,10 +251,7 @@ export function DynamicEventForm({
         }
 
         if (data.requiresPayment) {
-          const checkoutPath =
-            data.checkoutUrl ??
-            data.redirectTo ??
-            (data.participantId ? `/checkout/${data.participantId}` : null);
+          const checkoutPath = data.checkoutUrl ?? data.redirectTo ?? null;
 
           if (!checkoutPath) {
             throw new Error(

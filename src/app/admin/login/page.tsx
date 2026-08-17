@@ -1,8 +1,9 @@
 /**
- * /admin/login — tela de login unificada para Admin e Organizer.
+ * /admin/login — tela de login da área administrativa.
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { LoginForm } from "@/components/auth/login-form";
@@ -20,6 +21,9 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
 
   if (session?.user) {
     const { callbackUrl } = await searchParams;
+    if (session.user.role === "BUYER") {
+      redirect("/login");
+    }
     redirect(
       session.user.role === "ADMIN"
         ? callbackUrl ?? "/admin"
@@ -41,10 +45,15 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-        <LoginForm callbackUrl={callbackUrl} />
+        <LoginForm callbackUrl={callbackUrl} audience="admin" />
       </div>
 
       <p className="text-center text-xs text-gray-400 mt-6">
+        Conta de comprador?{" "}
+        <Link href="/login" className="text-primary hover:underline">
+          Entrar na área do usuário
+        </Link>
+        {" · "}
         Problemas para acessar?{" "}
         <span className="text-primary cursor-pointer hover:underline">
           Entre em contato com o suporte

@@ -55,10 +55,19 @@ Acesse [http://localhost:3000](http://localhost:3000).
 ## Estrutura principal
 
 - `/` — vitrine pública de eventos
+- `/login` e `/cadastro` — autenticação da área do usuário comprador
 - `/event/[slug]` — página do evento + inscrição
+- `/ingresso/[token]` — ingresso digital para entrada/check-in
 - `/meus-ingressos` — consulta de pedidos por e-mail
+- `/admin/login` — autenticação da área administrativa
 - `/dashboard` — painel do organizador
 - `/admin` — painel administrativo
+
+## Perfis e permissões
+
+- **Usuário comprador (`BUYER`)**: cria conta, faz login, navega eventos, compra ingressos e acessa ingresso digital.
+- **Organizador (`ORGANIZER`)**: cria/edita eventos próprios, acompanha vendas e participantes no dashboard.
+- **Administrador (`ADMIN`)**: visão total da operação (eventos, participantes, dashboard e configurações da plataforma).
 
 **Documentação técnica completa:** [`docs/CONTEXTO-TECNICO.md`](docs/CONTEXTO-TECNICO.md) (auditoria, arquitetura, plano de sprints, checklist production-ready)
 

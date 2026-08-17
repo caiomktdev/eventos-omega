@@ -2,12 +2,15 @@
   "name": "eventos-omega",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20 <26"
+  },
   "scripts": {
     "dev": "next dev",
     "dev:setup": "prisma generate && next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint \"src/**/*.{ts,tsx}\" \"prisma/**/*.ts\" \"scripts/**/*.ts\" --max-warnings=0",
     "test": "tsx --test src/lib/**/*.test.ts src/components/**/*.test.ts",
     "test:smoke": "dotenv -e .env.local -- tsx scripts/smoke-home.ts",
     "postinstall": "prisma generate",
@@ -33,6 +36,7 @@
     "@radix-ui/react-toast": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.1.6",
     "@types/bcryptjs": "^2.4.6",
+    "@upstash/redis": "^1.38.2",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

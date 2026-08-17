@@ -6,7 +6,7 @@
  *   2. Encontra ou cria o User pelo e-mail informado
  *   3. Verifica disponibilidade de estoque do TicketType
  *   4. Cria o Participant com os dados do formulário (formData JSON)
- *   5. Cria a Transaction com grossValue, mooveFee (2%) e organizerNetValue
+ *   5. Cria a Transaction com grossValue, mooveFee (5,5%) e organizerNetValue
  *      calculados EXCLUSIVAMENTE no servidor
  *   6. Reserva o estoque (soldQuantity++)
  *
@@ -21,11 +21,25 @@ import { enrollSchema } from "@/lib/validations";
 import { calculateMooveFee } from "@/lib/fee";
 import { sendTicketConfirmationEmailAsync } from "@/lib/email/ticket-confirmation";
 import { reservationExpiresAtFromNow } from "@/lib/reservations/constants";
+import { createCheckoutAccessToken } from "@/lib/checkout-access";
+import { getClientIp } from "@/lib/request-ip";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import { ZodError } from "zod";
 import type { EventFormStructure } from "@/types";
 
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request);
+    const rateLimit = await checkRateLimit({
+      scope: "api:enroll",
+      key: ip,
+      limit: 20,
+      windowMs: 60_000,
+    });
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterSec);
+    }
+
     const body = await request.json();
 
     // --- Validação base (nome + email + ticketTypeId + eventId) ---
@@ -38,6 +52,7 @@ export async function POST(request: Request) {
     }
 
     const { eventId, ticketTypeId, formData } = parsed.data;
+    const normalizedEmail = formData.email.trim().toLowerCase();
 
     // --- Busca evento com formStructure e tipo de ingresso ---
     const event = await prisma.event.findUnique({
@@ -116,7 +131,7 @@ export async function POST(request: Request) {
     const existingForEmail = await prisma.participant.count({
       where: {
         ticketTypeId,
-        user: { email: formData.email },
+        user: { email: normalizedEmail },
         status: { in: ["REGISTERED", "CONFIRMED", "CHECKED_IN"] },
       },
     });
@@ -141,10 +156,10 @@ export async function POST(request: Request) {
 
     // --- Encontra ou cria o User pelo e-mail ---
     const user = await prisma.user.upsert({
-      where: { email: formData.email },
+      where: { email: normalizedEmail },
       update: { name: formData.nome },
       create: {
-        email: formData.email,
+        email: normalizedEmail,
         name: formData.nome,
         role: "BUYER",
       },
@@ -153,7 +168,7 @@ export async function POST(request: Request) {
     // --- Cria Participant + Transaction em transação atômica ---
     const unitPriceCents = Math.round(Number(ticketType.price) * 100);
 
-    // ===== CÁLCULO IMUTÁVEL DA TAXA MOOVE (2%) =====
+    // ===== CÁLCULO IMUTÁVEL DA TAXA MOOVE (5,5%) =====
     const feeCalc = calculateMooveFee(unitPriceCents / 100);
     // ================================================
 
@@ -178,7 +193,10 @@ export async function POST(request: Request) {
           // Participante gratuito já começa CONFIRMED, pago começa REGISTERED
           status: isFree ? "CONFIRMED" : "REGISTERED",
           // formData armazenado como JSON — preserva todos os campos do formulário
-          formData: formData as Record<string, string | boolean | number>,
+          formData: {
+            ...formData,
+            email: normalizedEmail,
+          } as Record<string, string | boolean | number>,
           transaction: {
             create: {
               grossValue: feeCalc.grossAmount,
@@ -212,10 +230,17 @@ export async function POST(request: Request) {
     // --- Para ingressos pagos: cria preferência MP e retorna URL ---
     if (!isFree) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+      const checkoutAccessToken = createCheckoutAccessToken(
+        participant.id,
+        normalizedEmail
+      );
       const checkoutRes = await fetch(`${baseUrl}/api/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ participantId: participant.id }),
+        body: JSON.stringify({
+          participantId: participant.id,
+          accessToken: checkoutAccessToken,
+        }),
       });
 
       if (checkoutRes.ok) {
@@ -226,8 +251,12 @@ export async function POST(request: Request) {
             ordemCompra: participant.ordemCompra,
             status: participant.status,
             requiresPayment: true,
-            redirectTo: checkoutUrl ?? `/checkout/${participant.id}`,
-            checkoutUrl: checkoutUrl ?? `/checkout/${participant.id}`,
+            redirectTo:
+              checkoutUrl ??
+              `/checkout/${participant.id}?k=${checkoutAccessToken}`,
+            checkoutUrl:
+              checkoutUrl ??
+              `/checkout/${participant.id}?k=${checkoutAccessToken}`,
           },
           { status: 201 }
         );
@@ -241,7 +270,7 @@ export async function POST(request: Request) {
           status: participant.status,
           requiresPayment: true,
           redirectTo: null,
-          checkoutUrl: `/checkout/${participant.id}`,
+          checkoutUrl: `/checkout/${participant.id}?k=${checkoutAccessToken}`,
           paymentError:
             (checkoutError as { error?: string }).error ??
             "Não foi possível iniciar o pagamento. Tente novamente na página de checkout.",

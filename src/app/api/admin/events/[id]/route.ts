@@ -88,7 +88,7 @@ export async function GET(req: Request, { params }: RouteContext) {
     const url = new URL(req.url);
     const page = Math.max(1, Number(url.searchParams.get("page") ?? "1"));
     const perPage = Math.min(100, Number(url.searchParams.get("perPage") ?? "50"));
-    const search = url.searchParams.get("search") ?? "";
+    const search = (url.searchParams.get("search") ?? "").trim();
 
     const event = await prisma.event.findUnique({
       where: { id },
@@ -103,9 +103,20 @@ export async function GET(req: Request, { params }: RouteContext) {
       return NextResponse.json({ error: "Evento não encontrado." }, { status: 404 });
     }
 
+    const participantWhere = search
+      ? {
+          eventId: id,
+          OR: [
+            { user: { email: { contains: search, mode: "insensitive" as const } } },
+            { formData: { path: ["nome"], string_contains: search } },
+            { formData: { path: ["email"], string_contains: search } },
+          ],
+        }
+      : { eventId: id };
+
     const [participants, total] = await Promise.all([
       prisma.participant.findMany({
-        where: { eventId: id },
+        where: participantWhere,
         include: {
           user: { select: { id: true, name: true, email: true } },
           ticketType: { select: { id: true, name: true, price: true } },
@@ -126,27 +137,12 @@ export async function GET(req: Request, { params }: RouteContext) {
         skip: (page - 1) * perPage,
         take: perPage,
       }),
-      prisma.participant.count({ where: { eventId: id } }),
+      prisma.participant.count({ where: participantWhere }),
     ]);
-
-    const filtered = search
-      ? participants.filter((p) => {
-          const fd = p.formData as Record<string, unknown>;
-          const haystack = [
-            String(fd.nome ?? ""),
-            String(fd.email ?? ""),
-            p.user.email,
-            String(p.ordemCompra),
-          ]
-            .join(" ")
-            .toLowerCase();
-          return haystack.includes(search.toLowerCase());
-        })
-      : participants;
 
     return NextResponse.json({
       event,
-      participants: filtered,
+      participants,
       pagination: { total, page, perPage, totalPages: Math.ceil(total / perPage) },
     });
   } catch (err) {

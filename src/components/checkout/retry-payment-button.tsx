@@ -14,9 +14,13 @@ import { Button } from "@/components/ui/button";
 
 interface RetryPaymentButtonProps {
   participantId: string;
+  accessToken: string;
 }
 
-export function RetryPaymentButton({ participantId }: RetryPaymentButtonProps) {
+export function RetryPaymentButton({
+  participantId,
+  accessToken,
+}: RetryPaymentButtonProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +32,7 @@ export function RetryPaymentButton({ participantId }: RetryPaymentButtonProps) {
         const res = await fetch("/api/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ participantId }),
+          body: JSON.stringify({ participantId, accessToken }),
         });
 
         const data = await res.json();

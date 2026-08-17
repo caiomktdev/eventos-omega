@@ -6,7 +6,7 @@
 //   User        — organizadores e participantes
 //   Event       — eventos com formStructure Json para formulários dinâmicos
 //   Participant — inscrição no evento com ordemCompra autoincrement
-//   Transaction — transação financeira com grossValue, mooveFee (2%) e organizerNetValue
+//   Transaction — transação financeira com grossValue, mooveFee (5,5%) e organizerNetValue
 //
 // Modelos de suporte:
 //   TicketType  — tipos de ingresso do evento
@@ -250,6 +250,8 @@ model Participant {
   eventId      String
   ticketTypeId String
   status       ParticipantStatus @default(REGISTERED)
+  /// Token público para exibição do ingresso digital e check-in.
+  checkInToken String            @unique @default(uuid())
 
   /// Respostas do participante ao formulário definido em Event.formStructure.
   /// Armazenado como JSON para flexibilidade total de campos por evento.
@@ -272,6 +274,7 @@ model Participant {
   @@index([eventId])
   @@index([ticketTypeId])
   @@index([status])
+  @@index([eventId, checkInToken])
   @@map("participants")
 }
 
@@ -279,7 +282,7 @@ model Participant {
 // Transaction — transação financeira de uma inscrição
 //
 // REGRA DE NEGÓCIO CRÍTICA (Moove):
-//   mooveFee = 2% sobre grossValue, calculada exclusivamente no servidor.
+//   mooveFee = 5,5% sobre grossValue, calculada exclusivamente no servidor.
 //   organizerNetValue = grossValue - mooveFee
 //   Esses três campos são imutáveis após a criação da transação.
 // ---------------------------------------------------------------------------
@@ -291,7 +294,7 @@ model Transaction {
   /// Valor bruto cobrado do comprador (em Reais).
   grossValue    Decimal           @db.Decimal(10, 2)
 
-  /// Taxa de intermediação Moove: exatamente 2% de grossValue.
+  /// Taxa de intermediação Moove: exatamente 5,5% de grossValue.
   /// Calculada no servidor — nunca aceita do cliente.
   mooveFee      Decimal           @db.Decimal(10, 2)
 
