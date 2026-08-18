@@ -52,6 +52,18 @@ Acesse [http://localhost:3000](http://localhost:3000).
 7. Organizadores conectam a conta MP em `/dashboard` antes de vender ingressos pagos
 8. Configure **Resend** (`RESEND_API_KEY`, `EMAIL_FROM`) para envio automático de ingressos por e-mail
 
+### Hostinger VPS (app + banco no mesmo servidor)
+
+- Guia completo: `docs/HOSTINGER-VPS-PLANO-ACAO.md`
+- Variáveis de produção: `.env.production.example`
+- Scripts prontos:
+  - `scripts/vps-bootstrap-hostinger.sh`
+  - `scripts/setup-postgres-eventosomega.sh`
+  - `scripts/vps-deploy.sh`
+- Templates:
+  - `infra/systemd/eventos-omega.service`
+  - `infra/nginx/eventosomega.com.br.conf`
+
 ## Estrutura principal
 
 - `/` — vitrine pública de eventos
