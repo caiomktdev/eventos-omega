@@ -14,6 +14,7 @@ import { PixPaymentDisplay } from "@/components/checkout/pix-payment-display";
 
 interface EmbeddedPaymentCheckoutProps {
   participantId: string;
+  accessToken: string;
   amount: number;
   payerEmail: string;
   initialPreferenceId?: string | null;
@@ -61,6 +62,7 @@ function isPixPending(data: ProcessPaymentResponse): boolean {
 
 export function EmbeddedPaymentCheckout({
   participantId,
+  accessToken,
   amount,
   payerEmail,
   initialPreferenceId,
@@ -103,7 +105,7 @@ export function EmbeddedPaymentCheckout({
         const res = await fetch("/api/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ participantId }),
+          body: JSON.stringify({ participantId, accessToken }),
         });
 
         const data = await res.json();
@@ -131,7 +133,7 @@ export function EmbeddedPaymentCheckout({
     return () => {
       cancelled = true;
     };
-  }, [participantId, preferenceId, statusPaymentId]);
+  }, [participantId, accessToken, preferenceId, statusPaymentId]);
 
   if (loading) {
     return (
@@ -247,7 +249,7 @@ export function EmbeddedPaymentCheckout({
             const res = await fetch("/api/payments/process", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ participantId, formData }),
+              body: JSON.stringify({ participantId, accessToken, formData }),
             });
 
             const data = (await res.json()) as ProcessPaymentResponse;

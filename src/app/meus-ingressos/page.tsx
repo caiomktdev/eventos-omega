@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Ticket } from "lucide-react";
 import { MyTicketsLookup } from "@/components/tickets/my-tickets-lookup";
 
@@ -18,11 +19,13 @@ export default function MyTicketsPage() {
             Meus ingressos
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground sm:text-base">
-            Informe o e-mail usado na inscrição para consultar seus pedidos,
+            Solicite um link seguro no seu e-mail para consultar pedidos,
             status de pagamento e número de ordem de compra.
           </p>
         </header>
-        <MyTicketsLookup />
+        <Suspense fallback={null}>
+          <MyTicketsLookup />
+        </Suspense>
       </div>
     </div>
   );

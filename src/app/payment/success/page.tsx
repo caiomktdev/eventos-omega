@@ -4,9 +4,10 @@
  */
 
 import Link from "next/link";
-import { CheckCircle2, Ticket, ArrowLeft, Download } from "lucide-react";
+import { CheckCircle2, Ticket, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { prisma } from "@/lib/prisma";
 
 interface PaymentSuccessPageProps {
   searchParams: Promise<{
@@ -20,6 +21,29 @@ export default async function PaymentSuccessPage({
   searchParams,
 }: PaymentSuccessPageProps) {
   const { payment_id, external_reference } = await searchParams;
+  const participant = external_reference
+    ? await prisma.participant.findUnique({
+        where: { id: external_reference },
+        select: {
+          status: true,
+          checkInToken: true,
+          transaction: {
+            select: {
+              status: true,
+              mercadoPagoPaymentId: true,
+            },
+          },
+        },
+      })
+    : null;
+
+  const paymentMatches =
+    !payment_id ||
+    participant?.transaction?.mercadoPagoPaymentId === payment_id ||
+    participant?.transaction?.status === "APPROVED";
+  const isConfirmed =
+    participant?.status === "CONFIRMED" || participant?.status === "CHECKED_IN";
+  const verifiedSuccess = Boolean(participant && isConfirmed && paymentMatches);
 
   return (
     <div className="container mx-auto px-4 py-16 max-w-lg">
@@ -33,10 +57,12 @@ export default async function PaymentSuccessPage({
 
           <div>
             <h1 className="text-2xl font-bold text-green-700">
-              Pagamento Confirmado!
+              {verifiedSuccess ? "Pagamento Confirmado!" : "Pagamento em validação"}
             </h1>
             <p className="text-muted-foreground mt-2">
-              Seus ingressos foram reservados com sucesso.
+              {verifiedSuccess
+                ? "Seu ingresso foi confirmado com sucesso."
+                : "Estamos aguardando a confirmação final do pagamento pelo provedor."}
             </p>
           </div>
 
@@ -61,6 +87,12 @@ export default async function PaymentSuccessPage({
             </Link>{" "}
             usando o e-mail da inscrição.
           </p>
+
+          {verifiedSuccess && participant?.checkInToken && (
+            <Button asChild variant="secondary">
+              <Link href={`/ingresso/${participant.checkInToken}`}>Abrir ingresso digital</Link>
+            </Button>
+          )}
 
           <div className="flex flex-col gap-3">
             <Button asChild>

@@ -11,7 +11,7 @@
  *
  * Integridade financeira:
  *   O form envia apenas { eventId, ticketTypeId, formData } para POST /api/enroll.
- *   Todo cálculo de preço, mooveFee (2%) e organizerNetValue ocorre
+ *   Todo cálculo de preço, mooveFee (5,5%) e organizerNetValue ocorre
  *   exclusivamente no servidor em calculateMooveFee() → src/lib/fee.ts.
  */
 

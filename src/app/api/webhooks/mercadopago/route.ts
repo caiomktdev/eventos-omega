@@ -150,8 +150,13 @@ async function handleApproved(
         grossValue: true,
       },
     });
+    const participant = await tx.participant.findUnique({
+      where: { id: participantId },
+      select: { status: true, ticketTypeId: true },
+    });
 
     if (!transaction) throw new Error(`Transaction não encontrada para Participant ${participantId}`);
+    if (!participant) throw new Error(`Participant não encontrado: ${participantId}`);
 
     // Idempotência: já aprovado → sai sem alterar
     if (transaction.status === "APPROVED") {
@@ -185,6 +190,34 @@ async function handleApproved(
 
         return { skipped: true, reason: "value_mismatch", detail };
       }
+    }
+
+    // Se a reserva expirou e a inscrição foi cancelada, tenta re-reservar estoque.
+    if (participant.status === "CANCELLED") {
+      const stock = await tx.ticketType.findUniqueOrThrow({
+        where: { id: participant.ticketTypeId },
+        select: { soldQuantity: true, totalQuantity: true },
+      });
+
+      if (stock.soldQuantity >= stock.totalQuantity) {
+        await tx.transaction.update({
+          where: { id: transaction.id },
+          data: {
+            status: "IN_MEDIATION",
+            mercadoPagoPaymentId: mpPaymentId,
+          },
+        });
+        return {
+          skipped: true,
+          reason: "late_approval_without_stock",
+          detail: "Pagamento aprovado após expiração da reserva sem estoque disponível.",
+        };
+      }
+
+      await tx.ticketType.update({
+        where: { id: participant.ticketTypeId },
+        data: { soldQuantity: { increment: 1 } },
+      });
     }
 
     await tx.transaction.update({
@@ -330,20 +363,19 @@ export async function POST(request: Request) {
   const xRequestId = request.headers.get("x-request-id") ?? "";
 
   // -------------------------------------------------------------------------
-  // Validação de assinatura — obrigatória em produção
+  // Validação de assinatura — obrigatória sempre que houver secret configurado.
   // -------------------------------------------------------------------------
   const webhookSecret = process.env.MERCADOPAGO_WEBHOOK_SECRET;
 
-  if (process.env.NODE_ENV === "production") {
-    if (!webhookSecret) {
-      console.error("[Webhook MP] MERCADOPAGO_WEBHOOK_SECRET não configurado em produção.");
-      // Retorna 500 para que o MP reenvie — o erro é nosso, não dele
-      return NextResponse.json(
-        { error: "Configuração de segurança ausente." },
-        { status: 500 }
-      );
-    }
+  if (!webhookSecret && process.env.NODE_ENV === "production") {
+    console.error("[Webhook MP] MERCADOPAGO_WEBHOOK_SECRET não configurado em produção.");
+    return NextResponse.json(
+      { error: "Configuração de segurança ausente." },
+      { status: 500 }
+    );
+  }
 
+  if (webhookSecret) {
     const isValid = verifyMpSignature(
       request.url,
       xSignature,
@@ -503,12 +535,14 @@ export async function POST(request: Request) {
       err instanceof Error ? err.message : err
     );
 
-    // Retorna 200 para evitar re-fila infinita
-    // O erro está logado para investigação manual
-    return NextResponse.json({
-      received: true,
-      processed: false,
-      error: "Erro interno ao atualizar banco.",
-    });
+    // Retorna 502 para que o MP reenvie a notificação após falha transitória
+    return NextResponse.json(
+      {
+        received: true,
+        processed: false,
+        error: "Erro interno ao atualizar banco.",
+      },
+      { status: 502 }
+    );
   }
 }

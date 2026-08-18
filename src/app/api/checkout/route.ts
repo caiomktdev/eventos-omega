@@ -5,7 +5,7 @@
  *
  *  1. Busca o preço real do ingresso no banco (fonte da verdade)
  *  2. Recalcula ESTRITAMENTE no servidor:
- *       mooveFee         = grossValue * 0.02   (2% — imutável)
+ *       mooveFee         = grossValue * 0.055  (5,5% — imutável)
  *       organizerNetValue = grossValue - mooveFee
  *  3. Persiste esses três valores na Transaction com status PENDING
  *  4. Cria uma Preference no Mercado Pago com chave de idempotência
@@ -28,12 +28,20 @@ import {
 import { ensureOrganizerAccessToken } from "@/lib/mercadopago-oauth";
 import { getAppBaseUrl } from "@/lib/app-url";
 import { calculateMooveFee } from "@/lib/fee";
+import {
+  isReservationActive,
+  reservationExpiresAtFromNow,
+} from "@/lib/reservations/constants";
+import { verifyCheckoutAccessToken } from "@/lib/checkout-access";
+import { getClientIp } from "@/lib/request-ip";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 // ---------------------------------------------------------------------------
 // Validação do body
 // ---------------------------------------------------------------------------
 const checkoutBodySchema = z.object({
   participantId: z.string().cuid("participantId deve ser um CUID válido."),
+  accessToken: z.string().min(32, "Token de acesso inválido."),
 });
 
 // ---------------------------------------------------------------------------
@@ -60,8 +68,19 @@ function toDecimalFees(grossValueDecimal: Decimal): {
 // ---------------------------------------------------------------------------
 export async function POST(request: Request) {
   try {
+    const ip = getClientIp(request);
+    const rateLimit = await checkRateLimit({
+      scope: "api:checkout",
+      key: ip,
+      limit: 30,
+      windowMs: 60_000,
+    });
+    if (!rateLimit.allowed) {
+      return rateLimitResponse(rateLimit.retryAfterSec);
+    }
+
     const body = await request.json();
-    const { participantId } = checkoutBodySchema.parse(body);
+    const { participantId, accessToken } = checkoutBodySchema.parse(body);
 
     // -----------------------------------------------------------------------
     // 1. Busca o Participant com todos os dados necessários
@@ -88,6 +107,7 @@ export async function POST(request: Request) {
             id: true,
             status: true,
             mercadoPagoPreferenceId: true,
+            reservationExpiresAt: true,
           },
         },
       },
@@ -104,6 +124,27 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Transação financeira não encontrada para esta inscrição." },
         { status: 422 }
+      );
+    }
+
+    const participantFormData =
+      participant.formData as Record<string, string | number | boolean> | null;
+    const participantEmail =
+      typeof participantFormData?.email === "string"
+        ? participantFormData.email.trim().toLowerCase()
+        : null;
+
+    if (
+      !participantEmail ||
+      !verifyCheckoutAccessToken({
+        participantId,
+        email: participantEmail,
+        token: accessToken,
+      })
+    ) {
+      return NextResponse.json(
+        { error: "Acesso ao checkout não autorizado para esta inscrição." },
+        { status: 403 }
       );
     }
 
@@ -130,20 +171,54 @@ export async function POST(request: Request) {
       );
     }
 
-    // Se já tiver uma preferência ativa (idempotência), retorna sem recriar
-    if (tx.mercadoPagoPreferenceId && tx.status === "PENDING") {
+    // Se já tiver uma preferência ativa dentro do TTL (idempotência), retorna sem recriar
+    if (
+      tx.mercadoPagoPreferenceId &&
+      tx.status === "PENDING" &&
+      isReservationActive(tx.reservationExpiresAt)
+    ) {
       return NextResponse.json({
         preferenceId: tx.mercadoPagoPreferenceId,
-        checkoutUrl: `/checkout/${participantId}`,
+        checkoutUrl: `/checkout/${participantId}?k=${accessToken}`,
         participantId,
         reused: true,
+      });
+    }
+
+    const reservationExpired =
+      tx.reservationExpiresAt != null &&
+      !isReservationActive(tx.reservationExpiresAt);
+
+    const needsStockReReservation =
+      participant.status === "CANCELLED" || tx.status === "CANCELLED";
+
+    if (needsStockReReservation) {
+      await prisma.$transaction(async (db) => {
+        const fresh = await db.ticketType.findUniqueOrThrow({
+          where: { id: participant.ticketType.id },
+          select: { soldQuantity: true, totalQuantity: true },
+        });
+
+        if (fresh.soldQuantity >= fresh.totalQuantity) {
+          throw new Error("Ingresso esgotado.");
+        }
+
+        await db.ticketType.update({
+          where: { id: participant.ticketType.id },
+          data: { soldQuantity: { increment: 1 } },
+        });
+
+        await db.participant.update({
+          where: { id: participantId },
+          data: { status: "REGISTERED" },
+        });
       });
     }
 
     // -----------------------------------------------------------------------
     // 3. Recálculo ESTRITO dos valores financeiros a partir do preço do banco.
     //    O cliente nunca envia valores — o preço vem do TicketType.price.
-    //    Taxa de 2% aplicada via calculateMooveFee (src/lib/fee.ts — fonte única).
+    //    Taxa de 5,5% aplicada via calculateMooveFee (src/lib/fee.ts — fonte única).
     // -----------------------------------------------------------------------
     const { grossValue, mooveFee, organizerNetValue, feeRateApplied } =
       toDecimalFees(participant.ticketType.price);
@@ -178,6 +253,10 @@ export async function POST(request: Request) {
         mooveFee,
         organizerNetValue,
         status: "PENDING",
+        reservationExpiresAt: reservationExpiresAtFromNow(),
+        ...(reservationExpired || needsStockReReservation
+          ? { mercadoPagoPreferenceId: null }
+          : {}),
       },
     });
 
@@ -255,7 +334,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         preferenceId: preference.id,
-        checkoutUrl: `/checkout/${participantId}`,
+        checkoutUrl: `/checkout/${participantId}?k=${accessToken}`,
         participantId,
         financial: {
           grossValue: Number(grossValue),
@@ -277,9 +356,10 @@ export async function POST(request: Request) {
     // Erros do SDK do Mercado Pago expõem message estruturada
     if (err instanceof Error) {
       console.error("[POST /api/checkout]", err.message);
+      const status = err.message.includes("esgotado") ? 409 : 502;
       return NextResponse.json(
-        { error: "Erro ao gerar preferência de pagamento.", detail: err.message },
-        { status: 502 }
+        { error: err.message.includes("esgotado") ? err.message : "Erro ao gerar preferência de pagamento.", detail: err.message },
+        { status }
       );
     }
 

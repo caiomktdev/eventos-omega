@@ -1,0 +1,21 @@
+[Unit]
+Description=EventosOmega Next.js Application
+After=network.target
+
+[Service]
+Type=simple
+User=eventos
+Group=eventos
+WorkingDirectory=/home/eventos/apps/eventos-omega
+Environment=NODE_ENV=production
+Environment=PORT=3000
+EnvironmentFile=/home/eventos/apps/eventos-omega/.env.production
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+SyslogIdentifier=eventos-omega
+
+[Install]
+WantedBy=multi-user.target

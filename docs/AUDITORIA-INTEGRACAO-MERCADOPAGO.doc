@@ -1,0 +1,284 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<meta name="ProgId" content="Word.Document">
+<meta name="Generator" content="EventosOmega">
+<title>Auditoria — Integração Mercado Pago (Split Moove × Omega)</title>
+<!--[if gte mso 9]>
+<xml>
+<w:WordDocument>
+<w:View>Print</w:View>
+<w:Zoom>100</w:Zoom>
+</w:WordDocument>
+</xml>
+<![endif]-->
+<style>
+body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #1a1a1a; max-width: 800px; margin: 40px auto; }
+h1 { font-size: 22pt; color: #111; border-bottom: 2px solid #2563eb; padding-bottom: 8px; }
+h2 { font-size: 16pt; color: #1e40af; margin-top: 28px; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; }
+h3 { font-size: 13pt; color: #334155; margin-top: 20px; }
+p { margin: 8px 0; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0 20px 0; font-size: 10pt; }
+th { background: #1e40af; color: white; padding: 8px 10px; text-align: left; }
+td { border: 1px solid #cbd5e1; padding: 7px 10px; vertical-align: top; }
+tr:nth-child(even) td { background: #f8fafc; }
+.ok { color: #15803d; font-weight: bold; }
+.warn { color: #b45309; font-weight: bold; }
+.fail { color: #b91c1c; font-weight: bold; }
+.meta { color: #64748b; font-size: 10pt; margin-bottom: 24px; }
+code { font-family: Consolas, monospace; font-size: 9.5pt; background: #f1f5f9; padding: 1px 4px; }
+pre { font-family: Consolas, monospace; font-size: 9pt; background: #f1f5f9; padding: 12px; border-left: 4px solid #2563eb; white-space: pre-wrap; }
+ul, ol { margin: 8px 0; padding-left: 24px; }
+li { margin: 4px 0; }
+.box { background: #eff6ff; border: 1px solid #bfdbfe; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+.box-warn { background: #fffbeb; border-color: #fcd34d; }
+.box-ok { background: #f0fdf4; border-color: #86efac; }
+</style>
+</head>
+<body>
+
+<h1>Auditoria — Integração Mercado Pago</h1>
+<p class="meta"><strong>Split financeiro:</strong> Moove = 5,5% &nbsp;|&nbsp; Omega/Organizador = restante (~94,5%)<br>
+<strong>Projeto:</strong> EventosOmega<br>
+<strong>Produção:</strong> https://eventos-omega-six.vercel.app<br>
+<strong>Repositório:</strong> https://github.com/caiomktdev/eventos-omega<br>
+<strong>Data da auditoria:</strong> 23/05/2026<br>
+<strong>Escopo:</strong> Cálculo de taxas, split marketplace MP, OAuth, checkout, webhook e dashboards</p>
+
+<h2>1. Veredicto executivo</h2>
+<table>
+<tr><th>Dimensão</th><th>Status</th><th>Nota</th></tr>
+<tr><td>Cálculo da taxa Moove (5,5%)</td><td class="ok">✅ Correto</td><td>Fonte única em src/lib/fee.ts</td></tr>
+<tr><td>Split enviado ao Mercado Pago</td><td class="ok">✅ Correto</td><td>marketplace_fee + application_fee</td></tr>
+<tr><td>Quem recebe o quê (modelo MP)</td><td class="ok">✅ Correto</td><td>Pagamento no token OAuth do organizador</td></tr>
+<tr><td>Reconciliação do valor bruto</td><td class="warn">⚠️ Parcial</td><td>Webhook valida transaction_amount</td></tr>
+<tr><td>Reconciliação do split (5,5%)</td><td class="fail">❌ Ausente</td><td>Confia no MP; não valida application_fee</td></tr>
+<tr><td>UI / dashboards</td><td class="ok">✅ Correto</td><td>Exibem 5,5% via getMooveFeePercentLabel()</td></tr>
+<tr><td>Documentação interna</td><td class="fail">❌ Desatualizada</td><td>Vários arquivos ainda citam 2%</td></tr>
+<tr><td>Taxas do próprio MP</td><td class="warn">⚠️ Não modelado</td><td>Organizador recebe menos que organizerNetValue</td></tr>
+</table>
+
+<div class="box box-ok">
+<p><strong>Conclusão:</strong> O split Moove 5,5% / Omega ~94,5% está <strong>implementado corretamente</strong> no código e no fluxo do Mercado Pago. A integração é funcional e coerente para o happy path. Os riscos principais estão em validação incompleta do split no webhook, documentação desalinhada (2% vs 5,5%) e expectativa incorreta sobre o líquido real do organizador após taxas do MP.</p>
+</div>
+
+<h2>2. Modelo financeiro esperado</h2>
+<pre>
+Comprador paga → grossValue (preço do ingresso)
+                    │
+        ┌───────────┴───────────┐
+        │                       │
+   mooveFee (5,5%)      organizerNetValue (~94,5%)
+   → conta Moove         → conta Omega/organizador (OAuth)
+   via application_fee   via MP (líquido após taxas MP)
+</pre>
+
+<h3>2.1 Exemplos de cálculo (código real)</h3>
+<table>
+<tr><th>Preço do ingresso</th><th>Moove (5,5%)</th><th>Omega / Organizador</th></tr>
+<tr><td>R$ 100,00</td><td>R$ 5,50</td><td>R$ 94,50</td></tr>
+<tr><td>R$ 150,00</td><td>R$ 8,25</td><td>R$ 141,75</td></tr>
+<tr><td>R$ 250,00</td><td>R$ 13,75</td><td>R$ 236,25</td></tr>
+<tr><td>R$ 33,33</td><td>R$ 1,83</td><td>R$ 31,50</td></tr>
+</table>
+
+<p><strong>Fonte:</strong> src/lib/fee.ts — constante <code>MOOVE_FEE_RATE = 0.055</code>. Cálculo em centavos para evitar imprecisão de ponto flutuante. Testes unitários em src/lib/fee.test.ts confirmam os valores.</p>
+
+<h2>3. Fluxo técnico do split</h2>
+<ol>
+<li><strong>Inscrição</strong> (POST /api/enroll) — calcula grossValue, mooveFee e organizerNetValue via calculateMooveFee(); persiste na Transaction.</li>
+<li><strong>Checkout</strong> (POST /api/checkout) — recalcula a partir de TicketType.price; cria Preference MP com token OAuth do organizador e <code>marketplace_fee = mooveFee</code>.</li>
+<li><strong>Pagamento</strong> (POST /api/payments/process) — cria Payment MP com token OAuth do organizador, <code>transaction_amount = grossValue</code> e <code>application_fee = mooveFee</code>.</li>
+<li><strong>Payment Brick</strong> — inicializado com <code>marketplace: true</code> (embedded-payment-checkout.tsx).</li>
+<li><strong>Webhook</strong> (POST /api/webhooks/mercadopago) — consulta pagamento na API MP; valida transaction_amount vs grossValue; atualiza status.</li>
+</ol>
+
+<h3>3.1 Onde cada valor é aplicado</h3>
+<table>
+<tr><th>Etapa</th><th>Arquivo</th><th>Token MP</th><th>Campo split</th><th>Valor</th></tr>
+<tr><td>Inscrição</td><td>src/app/api/enroll/route.ts</td><td>—</td><td>DB</td><td>grossValue, mooveFee, organizerNetValue</td></tr>
+<tr><td>Preference</td><td>src/app/api/checkout/route.ts</td><td>OAuth organizador</td><td>marketplace_fee</td><td>mooveFee</td></tr>
+<tr><td>Payment</td><td>src/app/api/payments/process/route.ts</td><td>OAuth organizador</td><td>application_fee</td><td>mooveFee</td></tr>
+<tr><td>Webhook</td><td>src/app/api/webhooks/mercadopago/route.ts</td><td>Plataforma Moove</td><td>—</td><td>Valida só transaction_amount</td></tr>
+</table>
+
+<p><strong>Avaliação:</strong> Padrão correto de marketplace Mercado Pago — pagamento criado na conta do organizador (Omega) com repasse automático da Moove via application_fee.</p>
+
+<h2>4. Papéis das contas Mercado Pago</h2>
+<table>
+<tr><th>Conta</th><th>Origem</th><th>Função</th></tr>
+<tr><td><strong>Moove (marketplace)</strong></td><td>MERCADOPAGO_ACCESS_TOKEN</td><td>App marketplace; recebe application_fee; OAuth; consulta webhook</td></tr>
+<tr><td><strong>Omega (organizador)</strong></td><td>OAuth → User.mercadoPagoAccessToken</td><td>Cria preference/payment; recebe ~94,5% (antes das taxas MP)</td></tr>
+</table>
+
+<p><strong>Requisitos operacionais:</strong></p>
+<ul>
+<li>Aplicação MP do tipo <strong>Marketplace</strong></li>
+<li>Conta Omega/organizador <strong>habilitada para receber pagamentos</strong></li>
+<li>Organizador conectado via OAuth em /dashboard antes de vender ingressos pagos</li>
+<li>Variáveis: MERCADOPAGO_ACCESS_TOKEN, CLIENT_ID, CLIENT_SECRET, WEBHOOK_SECRET, NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY</li>
+</ul>
+
+<h2>5. O que está correto</h2>
+
+<h3>5.1 Fonte única da taxa</h3>
+<ul>
+<li>calculateMooveFee() usada em enroll, checkout, página do evento e admin</li>
+<li>Cliente nunca envia valores monetários</li>
+<li>Preço vem exclusivamente de TicketType.price no servidor</li>
+</ul>
+
+<h3>5.2 Persistência auditável</h3>
+<p>Cada Transaction armazena:</p>
+<ul>
+<li><strong>grossValue</strong> — valor pago pelo comprador</li>
+<li><strong>mooveFee</strong> — 5,5% retido pela Moove</li>
+<li><strong>organizerNetValue</strong> — restante para Omega/organizador</li>
+</ul>
+<p>Metadata MP inclui breakdown: gross_value, moove_fee, moove_fee_rate (0.055), organizer_net_value.</p>
+
+<h3>5.3 Interface e dashboards</h3>
+<ul>
+<li>Dashboard organizador: "Moove retém automaticamente 5,5%" (mercadopago-connect-card.tsx)</li>
+<li>Página do evento, checkout e admin usam getMooveFeePercentLabel() → "5,5%"</li>
+<li>Admin soma mooveFee e organizerNetValue de transações APPROVED</li>
+</ul>
+
+<h3>5.4 Segurança do webhook (valor bruto)</h3>
+<ul>
+<li>Validação HMAC-SHA256 em produção (MERCADOPAGO_WEBHOOK_SECRET)</li>
+<li>Status obtido via API MP — não confia no payload IPN</li>
+<li>Reconciliação: transaction_amount vs grossValue; divergência → IN_MEDIATION</li>
+<li>Idempotência para status finais e e-mail de confirmação</li>
+</ul>
+
+<h2>6. Problemas e riscos identificados</h2>
+
+<h3>P1 — Webhook não valida o split de 5,5% (Prioridade: Alta)</h3>
+<p>O webhook valida apenas o valor bruto (transaction_amount), não se o MP aplicou application_fee correto. Se o MP processar valor bruto certo mas split errado, o sistema aprova a inscrição sem detectar.</p>
+<p><strong>Recomendação:</strong> Na aprovação, comparar mpPayment.fee_details ou application_fee retornado vs Transaction.mooveFee.</p>
+
+<h3>P2 — payments/process usa snapshot do DB (Prioridade: Média)</h3>
+<p>Usa grossValue e mooveFee gravados na Transaction, sem recalcular a partir do preço atual do ingresso. Risco baixo se o fluxo passar pelo checkout; risco médio se a API for chamada diretamente após mudança de preço.</p>
+<p><strong>Recomendação:</strong> Recalcular via calculateMooveFee(ticketType.price) no process, como faz o checkout.</p>
+
+<h3>P3 — Taxas do Mercado Pago não estão no modelo (Prioridade: Média)</h3>
+<p>organizerNetValue = gross − 5,5% Moove. Na prática, o MP desconta suas próprias taxas (~3–4% cartão/PIX) da conta do organizador. Líquido real:</p>
+<pre>Omega recebe ≈ organizerNetValue − taxas_MP
+Moove recebe ≈ mooveFee (application_fee)</pre>
+<p><strong>Recomendação:</strong> Exibir no dashboard: "Valor estimado antes das taxas Mercado Pago".</p>
+
+<h3>P4 — Documentação interna desatualizada (Prioridade: Baixa)</h3>
+<p>Código aplica 5,5%, mas comentários citam 2% em:</p>
+<ul>
+<li>prisma/schema.prisma</li>
+<li>src/app/api/enroll/route.ts</li>
+<li>src/app/api/checkout/route.ts</li>
+<li>src/app/checkout/[id]/page.tsx</li>
+<li>src/app/event/[slug]/page.tsx</li>
+<li>src/lib/mercadopago-oauth.ts</li>
+</ul>
+
+<h3>P5 — UI do comprador pode confundir (Prioridade: Baixa)</h3>
+<p>Exibe ingresso R$ 150, taxa 5,5% R$ 8,25, total R$ 150. A taxa é informativa (embutida no preço), não cobrada a mais. Pode parecer que falta somar R$ 8,25.</p>
+<p><strong>Recomendação:</strong> Renomear para "Inclui taxa de intermediação (5,5%)".</p>
+
+<h3>P6 — Sem campo feeRateApplied no banco (Prioridade: Média)</h3>
+<p>Taxa aplicada (0.055) só vai no metadata da preference MP. Transações antigas não registram taxa histórica se a regra mudar.</p>
+<p><strong>Recomendação:</strong> Campo mooveFeeRate em Transaction.</p>
+
+<h3>P7 — Estorno / chargeback (Prioridade: Média)</h3>
+<p>Webhook trata REFUNDED e CHARGED_BACK e libera estoque, mas não rastreia reversão proporcional Moove/Omega. MP faz split reverso automaticamente; app não confirma.</p>
+
+<h3>P8 — Inscrição sem MP conectado (Prioridade: Média)</h3>
+<p>enroll reserva estoque antes de verificar OAuth. Falha só no checkout (ORGANIZER_MP_NOT_CONNECTED). Estoque fica reservado desnecessariamente.</p>
+
+<h2>7. Matriz de conformidade do split</h2>
+<table>
+<tr><th>Regra de negócio</th><th>Implementado?</th><th>Evidência</th></tr>
+<tr><td>Moove = 5,5% do bruto</td><td class="ok">✅</td><td>MOOVE_FEE_RATE = 0.055</td></tr>
+<tr><td>Omega = bruto − Moove</td><td class="ok">✅</td><td>organizerAmount = gross − fee</td></tr>
+<tr><td>Comprador paga só preço do ingresso</td><td class="ok">✅</td><td>transaction_amount = grossValue</td></tr>
+<tr><td>Split no MP via marketplace</td><td class="ok">✅</td><td>application_fee + marketplace_fee</td></tr>
+<tr><td>Pagamento na conta Omega</td><td class="ok">✅</td><td>Token OAuth do organizador</td></tr>
+<tr><td>Repasse Moove automático</td><td class="ok">✅</td><td>application_fee → app marketplace</td></tr>
+<tr><td>Cálculo só no servidor</td><td class="ok">✅</td><td>Nunca aceita valor do cliente</td></tr>
+<tr><td>Validação bruto no webhook</td><td class="ok">✅</td><td>Reconciliação em centavos</td></tr>
+<tr><td>Validação split 5,5% no webhook</td><td class="fail">❌</td><td>Não implementado</td></tr>
+<tr><td>Líquido Omega pós-taxas MP</td><td class="fail">❌</td><td>Não modelado</td></tr>
+<tr><td>Taxa histórica persistida</td><td class="fail">❌</td><td>Só metadata MP</td></tr>
+</table>
+
+<h2>8. Como auditar na prática</h2>
+
+<h3>8.1 No banco de dados (após venda aprovada)</h3>
+<pre>SELECT
+  grossValue,
+  mooveFee,
+  organizerNetValue,
+  (mooveFee + organizerNetValue) AS soma,
+  status
+FROM transactions
+WHERE status = 'APPROVED'
+LIMIT 10;</pre>
+<p>Esperado: soma = grossValue e mooveFee / grossValue ≈ 0,055.</p>
+
+<h3>8.2 No painel Mercado Pago</h3>
+<p>Para um pagamento aprovado:</p>
+<ol>
+<li><strong>Conta Omega:</strong> movimentação ≈ organizerNetValue − taxas MP</li>
+<li><strong>Conta Moove (marketplace):</strong> application_fee ≈ mooveFee</li>
+<li><strong>Valor total cobrado:</strong> = grossValue</li>
+</ol>
+
+<h3>8.3 Teste em sandbox / produção</h3>
+<ol>
+<li>Organizador conecta MP em /dashboard</li>
+<li>Compra ingresso de R$ 100,00</li>
+<li>Verificar no DB: mooveFee = 5,50; organizerNetValue = 94,50</li>
+<li>No MP: payment com application_fee = 5,50</li>
+</ol>
+
+<h2>9. Arquivos relevantes da integração</h2>
+<table>
+<tr><th>Arquivo</th><th>Responsabilidade</th></tr>
+<tr><td>src/lib/fee.ts</td><td>Cálculo 5,5% — fonte única</td></tr>
+<tr><td>src/lib/mercadopago.ts</td><td>SDK MP (plataforma + token organizador)</td></tr>
+<tr><td>src/lib/mercadopago-oauth.ts</td><td>OAuth connect/refresh/disconnect</td></tr>
+<tr><td>src/app/api/enroll/route.ts</td><td>Inscrição + Transaction inicial</td></tr>
+<tr><td>src/app/api/checkout/route.ts</td><td>Preference + marketplace_fee</td></tr>
+<tr><td>src/app/api/payments/process/route.ts</td><td>Payment + application_fee</td></tr>
+<tr><td>src/app/api/webhooks/mercadopago/route.ts</td><td>IPN + reconciliação bruto</td></tr>
+<tr><td>src/components/checkout/embedded-payment-checkout.tsx</td><td>Payment Brick marketplace</td></tr>
+<tr><td>src/components/dashboard/mercadopago-connect-card.tsx</td><td>UI conexão OAuth</td></tr>
+<tr><td>prisma/schema.prisma</td><td>Transaction.grossValue, mooveFee, organizerNetValue</td></tr>
+</table>
+
+<h2>10. Prioridades de correção recomendadas</h2>
+<table>
+<tr><th>#</th><th>Ação</th><th>Impacto</th><th>Esforço estimado</th></tr>
+<tr><td>1</td><td>Validar application_fee no webhook</td><td>Alto</td><td>2–3 horas</td></tr>
+<tr><td>2</td><td>Recalcular fee em payments/process</td><td>Médio</td><td>1 hora</td></tr>
+<tr><td>3</td><td>Corrigir comentários 2% → 5,5%</td><td>Baixo</td><td>30 minutos</td></tr>
+<tr><td>4</td><td>Campo mooveFeeRate no schema</td><td>Médio</td><td>2 horas</td></tr>
+<tr><td>5</td><td>Aviso "antes das taxas MP" no dashboard</td><td>Médio</td><td>1 hora</td></tr>
+<tr><td>6</td><td>Bloquear evento pago sem MP conectado</td><td>Médio</td><td>2 horas</td></tr>
+<tr><td>7</td><td>Ajustar label taxa na UI do comprador</td><td>Baixo</td><td>30 minutos</td></tr>
+</table>
+
+<h2>11. Resumo final</h2>
+<div class="box">
+<p>A integração <strong>implementa corretamente</strong> o split Moove 5,5% / Omega ~94,5% usando o modelo marketplace do Mercado Pago. O cálculo é consistente, server-side, testado e propagado até o MP via marketplace_fee e application_fee.</p>
+<p><strong>Não está 100% auditável</strong> porque: (1) o webhook não confirma que o MP repassou exatamente 5,5% à Moove; (2) a documentação interna ainda fala em 2%; (3) o líquido real do Omega é menor que organizerNetValue por taxas do próprio Mercado Pago.</p>
+<p><strong>Prontidão estimada da integração financeira:</strong> ~75–80% (happy path operacional; gaps em validação de split e documentação).</p>
+</div>
+
+<p class="meta" style="margin-top: 40px; border-top: 1px solid #cbd5e1; padding-top: 16px;">
+Documento gerado automaticamente a partir da auditoria técnica do EventosOmega.<br>
+Para detalhes de implementação e sprints, consulte docs/CONTEXTO-TECNICO.md no repositório.
+</p>
+
+</body>
+</html>

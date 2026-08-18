@@ -4,7 +4,7 @@
  * Fluxo:
  *  1. GET /api/mercadopago/connect → redireciona para auth MP
  *  2. GET /api/mercadopago/callback → troca code por tokens e persiste no User
- *  3. Checkout usa o access token do organizador + marketplace_fee (Moove 2%)
+ *  3. Checkout usa o access token do organizador + marketplace_fee (Moove 5,5%)
  *
  * Servidor only — nunca importar em Client Components.
  */

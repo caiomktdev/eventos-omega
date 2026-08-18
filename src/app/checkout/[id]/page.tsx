@@ -12,7 +12,7 @@
  *   CANCELLED /
  *   IN_PROCESS    → permite retentar
  *
- * O recálculo financeiro (mooveFee 2%) ocorre SEMPRE no servidor
+ * O recálculo financeiro (mooveFee 5,5%) ocorre SEMPRE no servidor
  * em /api/checkout — nunca no cliente.
  */
 
@@ -38,11 +38,13 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { EmbeddedPaymentCheckout } from "@/components/checkout/embedded-payment-checkout";
 import { EventCoverImage } from "@/components/events/event-cover-image";
+import { verifyCheckoutAccessToken } from "@/lib/checkout-access";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface PageProps {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ k?: string }>;
 }
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
@@ -120,11 +122,29 @@ const RETRYABLE_STATUSES = new Set([
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default async function CheckoutRetryPage({ params }: PageProps) {
+export default async function CheckoutRetryPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { id } = await params;
+  const { k } = searchParams ? await searchParams : { k: undefined };
   const data = await getCheckoutData(id);
 
   if (!data) notFound();
+
+  const formDataForAccess = data.formData as Record<string, string> | null;
+  const participantEmail = formDataForAccess?.email?.trim().toLowerCase();
+  if (
+    !k ||
+    !participantEmail ||
+    !verifyCheckoutAccessToken({
+      participantId: id,
+      email: participantEmail,
+      token: k,
+    })
+  ) {
+    notFound();
+  }
 
   const { event, ticketType, transaction } = data;
   const txStatus = transaction?.status ?? "PENDING";
@@ -329,6 +349,7 @@ export default async function CheckoutRetryPage({ params }: PageProps) {
                 {canRetry && transaction && Number(transaction.grossValue) > 0 && (
                   <EmbeddedPaymentCheckout
                     participantId={data.id}
+                    accessToken={k}
                     amount={Number(transaction.grossValue)}
                     payerEmail={payerEmail}
                     initialPreferenceId={transaction.mercadoPagoPreferenceId}

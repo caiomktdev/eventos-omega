@@ -1,19 +1,17 @@
 /**
  * Página exibida quando o Mercado Pago redireciona para a back_url de failure.
  *
- * O query param external_reference = participantId (setado em /api/checkout).
- * Com ele, redirecionamos o usuário para /checkout/[participantId] onde pode
- * retentar o pagamento sem perder os dados do formulário de inscrição.
+ * Mantém mensagem de falha e orienta o comprador a usar o link seguro
+ * enviado por e-mail para retentar o pagamento.
  */
 
 import Link from "next/link";
-import { XCircle, RefreshCw, ArrowLeft } from "lucide-react";
+import { XCircle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface PaymentFailurePageProps {
   searchParams: Promise<{
-    external_reference?: string;
     payment_id?: string;
     status?: string;
   }>;
@@ -22,7 +20,7 @@ interface PaymentFailurePageProps {
 export default async function PaymentFailurePage({
   searchParams,
 }: PaymentFailurePageProps) {
-  const { external_reference } = await searchParams;
+  await searchParams;
 
   return (
     <div className="container mx-auto px-4 py-16 max-w-lg">
@@ -55,15 +53,9 @@ export default async function PaymentFailurePage({
           </div>
 
           <div className="flex flex-col gap-3">
-            {/* Retry: redireciona para /checkout/[participantId] */}
-            {external_reference && (
-              <Button asChild>
-                <Link href={`/checkout/${external_reference}`}>
-                  <RefreshCw className="h-4 w-4" />
-                  Tentar novamente
-                </Link>
-              </Button>
-            )}
+            <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+              Por segurança, para retentar o pagamento use o link de checkout enviado por e-mail.
+            </div>
 
             <Button variant="outline" asChild>
               <Link href="/">

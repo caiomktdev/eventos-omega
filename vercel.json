@@ -1,5 +1,11 @@
 {
   "buildCommand": "prisma generate && DIRECT_URL=\"${DIRECT_URL:-$DATABASE_URL}\" prisma migrate deploy && next build",
   "framework": "nextjs",
-  "regions": ["gru1"]
+  "regions": ["gru1"],
+  "crons": [
+    {
+      "path": "/api/cron/release-expired-reservations",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

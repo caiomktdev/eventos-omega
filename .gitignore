@@ -40,3 +40,8 @@ next-env.d.ts
 prisma/*.db
 prisma/*.db-journal
 .env*
+!.env.production.example
+
+# local migration artifacts
+backup_*.sql
+backup_*.dump

@@ -33,8 +33,11 @@ export const enrollSchema = z.object({
   eventId: z.string().cuid("ID do evento inválido."),
   ticketTypeId: z.string().cuid("ID do tipo de ingresso inválido."),
   formData: z.object({
-    nome: z.string().min(2, "Nome deve ter ao menos 2 caracteres.").max(120),
-    email: z.string().email("E-mail inválido."),
+    nome: z.string().min(2, "Nome deve ter ao menos 2 caracteres.").max(120).transform((value) => value.trim()),
+    email: z
+      .string()
+      .email("E-mail inválido.")
+      .transform((value) => value.trim().toLowerCase()),
   }).catchall(z.union([z.string(), z.boolean(), z.number()])),
 });
 

@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 
 interface LoginFormProps {
   callbackUrl?: string;
+  audience?: "admin" | "user" | "all";
 }
 
 // Mensagem padrão para credenciais inválidas
@@ -40,15 +41,15 @@ function resolvePostLoginDestination(
   role: string | undefined,
   callbackUrl?: string
 ): string {
-  if (callbackUrl && callbackUrl.startsWith("/")) {
+  if (callbackUrl && /^\/(?!\/)/.test(callbackUrl)) {
     return callbackUrl;
   }
   if (role === "ADMIN") return "/admin";
   if (role === "ORGANIZER") return "/dashboard";
-  return "/dashboard";
+  return "/meus-ingressos";
 }
 
-export function LoginForm({ callbackUrl }: LoginFormProps) {
+export function LoginForm({ callbackUrl, audience = "all" }: LoginFormProps) {
   const [isPending, startTransition] = useTransition();
 
   const [email, setEmail] = useState("");
@@ -83,10 +84,14 @@ export function LoginForm({ callbackUrl }: LoginFormProps) {
         }
 
         const session = await getSession();
-        const destination = resolvePostLoginDestination(
-          session?.user?.role,
-          callbackUrl
-        );
+        const role = session?.user?.role;
+
+        if (audience === "admin" && role === "BUYER") {
+          setError("Este acesso é exclusivo para administradores e organizadores.");
+          return;
+        }
+
+        const destination = resolvePostLoginDestination(role, callbackUrl);
 
         // Navegação completa garante que o cookie de sessão seja lido pelo middleware
         window.location.assign(destination);
@@ -184,7 +189,7 @@ export function LoginForm({ callbackUrl }: LoginFormProps) {
       </Button>
 
       {/* Dica de credenciais (apenas dev) */}
-      {process.env.NODE_ENV !== "production" && (
+      {process.env.NODE_ENV !== "production" && audience === "admin" && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 space-y-1">
           <p className="font-semibold">Credenciais de desenvolvimento:</p>
           <p>Admin: admin@eventosomega.com / Admin@2026!</p>

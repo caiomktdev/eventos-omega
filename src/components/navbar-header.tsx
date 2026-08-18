@@ -6,10 +6,12 @@
 
 import Link from "next/link";
 import { memo, startTransition, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import {
   PlusCircle,
   CalendarDays,
   Ticket,
+  Compass,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -55,6 +57,9 @@ function NavLink({
 }
 
 const NavLinksRow = memo(function NavLinksRow({ compact }: { compact: boolean }) {
+  const { data: session } = useSession();
+  const role = session?.user?.role;
+
   return (
     <div
       aria-hidden={compact}
@@ -63,8 +68,15 @@ const NavLinksRow = memo(function NavLinksRow({ compact }: { compact: boolean })
         compact ? "pointer-events-none max-w-0 opacity-0" : "max-w-[520px] opacity-100"
       )}
     >
-      <NavLink href="/dashboard/events/new" icon={PlusCircle} label="Criar evento" />
-      <NavLink href="/dashboard" icon={CalendarDays} label="Meus eventos" />
+      {(role === "ADMIN" || role === "ORGANIZER") && (
+        <>
+          <NavLink href="/dashboard/events/new" icon={PlusCircle} label="Criar evento" />
+          <NavLink href="/dashboard" icon={CalendarDays} label="Gestão de eventos" />
+        </>
+      )}
+      {(role === "BUYER" || !role) && (
+        <NavLink href="/" icon={Compass} label="Ver eventos" />
+      )}
       <NavLink href="/meus-ingressos" icon={Ticket} label="Meus ingressos" />
     </div>
   );
